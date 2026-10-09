@@ -120,6 +120,7 @@ git push -u origin main
 
 | Symptom / Error | Root Cause | Resolution |
 | :--- | :--- | :--- |
+| `No interpreter found for Python 3.12.6 in managed installations` | Vercel's `uv` builder only resolves major.minor (`3.12`) in `.python-version`, not exact patch versions (`3.12.6`). | Keep `.python-version` set to `3.12` (already updated) and delete any `runtime.txt`. |
 | `ModuleNotFoundError: No module named 'app'` | Render manual Web Service defaults Start Command to `gunicorn app:app` instead of `gunicorn bookmyseat.wsgi:application`. | Set Render **Start Command** to `gunicorn bookmyseat.wsgi:application` (a root `app.py` WSGI bridge is also included so `gunicorn app:app` works automatically). |
 | `ImproperlyConfigured: SECRET_KEY...` | `SECRET_KEY` missing or left as placeholder when `DEBUG=False`. | Set a real random `SECRET_KEY` in Render/Vercel Environment Variables. |
 | `OperationalError: Network is unreachable` | Direct Supabase host (`db.<ref>.supabase.co`) uses IPv6, which some PaaS containers lack. | Switch `DATABASE_URL` to the **Supabase IPv4 Session Pooler** (`aws-0-<region>.pooler.supabase.com:5432`). |

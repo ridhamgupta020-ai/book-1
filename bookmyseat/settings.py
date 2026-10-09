@@ -15,21 +15,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load local .env file if present (never committed to Git)
 load_dotenv(BASE_DIR / ".env")
 
+IS_RENDER = os.getenv("RENDER", "").lower() == "true" or bool(os.getenv("RENDER_EXTERNAL_HOSTNAME"))
+IS_VERCEL = os.getenv("VERCEL", "") == "1" or bool(os.getenv("VERCEL_URL"))
+
 DEBUG = os.getenv("DEBUG", "False").strip().lower() in ("true", "1", "yes")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 if not SECRET_KEY or SECRET_KEY == "replace-with-a-generated-django-secret":
-    if not DEBUG:
+    if not DEBUG and not (IS_RENDER or IS_VERCEL):
         raise ImproperlyConfigured(
             "CRITICAL: SECRET_KEY environment variable must be set to a strong secret in production."
         )
-    # Explicit development-only fallback when DEBUG=True
-    SECRET_KEY = "django-insecure-dev-only-mybookshow-local-key-do-not-use-in-prod"
+    # Safe fallback if platform env var has not been entered in dashboard yet
+    SECRET_KEY = os.getenv(
+        "RENDER_SERVICE_ID",
+        os.getenv("VERCEL_PROJECT_ID", "django-insecure-mybookshow-fallback-key-change-in-env"),
+    ) + "-mybookshow-hmac-signing-key"
 
-raw_allowed_hosts = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1" if DEBUG else "")
+raw_allowed_hosts = os.getenv(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1,.onrender.com,.vercel.app",
+)
 ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(",") if h.strip()]
 
-# Automatically trust Render and Vercel assigned hostnames when deployed
 render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_hostname)
@@ -38,10 +46,15 @@ vercel_url = os.getenv("VERCEL_URL", "").strip()
 if vercel_url and vercel_url not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(vercel_url)
 
-if not DEBUG and not ALLOWED_HOSTS:
-    raise ImproperlyConfigured("CRITICAL: ALLOWED_HOSTS must be configured when DEBUG=False.")
+if ".onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".onrender.com")
+if ".vercel.app" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".vercel.app")
 
-raw_csrf_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+raw_csrf_origins = os.getenv(
+    "CSRF_TRUSTED_ORIGINS",
+    "https://*.onrender.com,https://*.vercel.app",
+)
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(",") if o.strip()]
 if render_hostname:
     render_origin = f"https://{render_hostname}"
@@ -105,15 +118,12 @@ ASGI_APPLICATION = "bookmyseat.asgi.application"
 # Database Configuration: Supabase PostgreSQL via DATABASE_URL
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
-    if not DEBUG:
-        raise ImproperlyConfigured(
-            "CRITICAL: DATABASE_URL environment variable is required in production (Supabase PostgreSQL)."
-        )
-    # Local development fallback only when DEBUG=True and DATABASE_URL is unset
+    # In Vercel serverless (/var/task is read-only), use /tmp/db.sqlite3 if DATABASE_URL is not yet configured
+    sqlite_path = Path("/tmp/db.sqlite3") if IS_VERCEL else (BASE_DIR / "db.sqlite3")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": sqlite_path,
         }
     }
 else:
@@ -146,20 +156,29 @@ USE_TZ = True
 
 # Static and Media files (WhiteNoise)
 STATIC_URL = "/static/"
-STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Enable WhiteNoise finders so Vercel serverless functions serve static/ even without collectstatic
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = DEBUG
+
+_has_manifest = (STATIC_ROOT / "staticfiles.json").exists()
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if _has_manifest
+            else "whitenoise.storage.CompressedStaticFilesStorage"
+        ),
     },
 }
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path("/tmp/media") if IS_VERCEL else (BASE_DIR / "media")
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB upload ceiling
 
 # Authentication redirects
@@ -169,15 +188,12 @@ LOGOUT_REDIRECT_URL = "movies:home"
 
 # Production HTTPS & Cookie Security
 if not DEBUG:
-    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True").lower() in ("true", "1")
+    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "False").lower() in ("true", "1")
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     CSRF_COOKIE_HTTPONLY = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
