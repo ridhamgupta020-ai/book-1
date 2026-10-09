@@ -74,6 +74,21 @@ git push -u origin main
 
 ## 4. Render Deployment (Recommended Primary Host)
 
+> **CRITICAL — Why Render Runs `gunicorn app:app` by Default**:
+> If you created your service in Render using **New + → Web Service** (instead of **New + → Blueprint**), Render **ignores `render.yaml`** and uses the commands typed inside the Render Dashboard UI (**Settings → Build & Deploy**), which default to `pip install -r requirements.txt` and `gunicorn app:app`.
+>
+> **Immediate Fix in Render Dashboard (`Settings → Build & Deploy`)**:
+> 1. **Build Command**:
+>    ```bash
+>    pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+>    ```
+>    *(or `bash ./build.sh` once pushed to GitHub)*
+> 2. **Start Command**:
+>    ```bash
+>    gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT
+>    ```
+> 3. Click **Save Changes**, then click **Manual Deploy → Deploy latest commit** (and make sure you have committed & pushed your latest files to GitHub).
+
 1. Push the repository to GitHub.
 2. In the [Render Dashboard](https://dashboard.render.com), click **New + -> Blueprint** and select your repository (`render.yaml` is pre-configured).
 3. Set the required environment variables in Render:
