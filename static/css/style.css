@@ -1,0 +1,43 @@
+:root {
+  --cinema-canvas: #090d16;
+  --cinema-surface: #111827;
+  --cinema-accent: #e11d48;
+}
+
+body.bg-cinema-canvas {
+  background-color: var(--cinema-canvas);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-cinema-surface {
+  background-color: var(--cinema-surface);
+}
+
+.screen-arc {
+  height: 12px;
+  max-width: 480px;
+  border-top: 3px solid var(--cinema-accent);
+  border-radius: 50% 50% 0 0;
+  box-shadow: 0 -8px 24px rgba(225, 29, 72, 0.35);
+}
+
+.seat-btn {
+  width: 38px;
+  height: 36px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.seat-btn.selected {
+  background-color: var(--cinema-accent);
+  border-color: var(--cinema-accent);
+  color: #ffffff;
+}

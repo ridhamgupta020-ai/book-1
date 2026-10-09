@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Select Seats — {{ show.movie.title }} | MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="mb-4">
+    <h1 class="h3 fw-bold font-display mb-1">{{ show.movie.title }}</h1>
+    <div class="text-secondary small">
+      {{ show.screen.theatre.name }} &middot; {{ show.screen.name }} &middot; {{ show.start_time|date:"D, d M Y H:i" }}
+    </div>
+  </div>
+
+  <div class="text-center mb-4">
+    <div class="screen-arc mx-auto mb-2"></div>
+    <small class="text-secondary">All eyes this way please — Auditorium Screen</small>
+  </div>
+
+  <form method="post" id="seat-booking-form">
+    {% csrf_token %}
+    <input type="hidden" name="seat_ids" id="selected-seat-ids" value="" />
+    <div class="d-flex flex-column gap-2 align-items-center mb-4">
+      {% for row_label, show_seats in rows.items %}
+        <div class="d-flex align-items-center gap-2">
+          <span class="font-mono text-secondary me-2" style="width: 24px">{{ row_label }}</span>
+          {% for ss in show_seats %}
+            <button
+              type="button"
+              class="btn btn-sm seat-btn {% if ss.status != 'available' %}btn-secondary disabled{% else %}btn-outline-light{% endif %}"
+              data-seat-id="{{ ss.id }}"
+              data-seat-label="{{ ss.seat.label }}"
+              data-seat-price="{{ ss.effective_price }}"
+              {% if ss.status != 'available' %}disabled{% endif %}
+            >
+              {{ ss.seat.seat_number }}
+            </button>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="card bg-cinema-surface border-secondary border-opacity-25 p-3 d-flex flex-md-row justify-content-between align-items-center">
+      <div>
+        <div class="small text-secondary">Selected Seats: <span id="selected-seat-labels" class="text-white fw-semibold">None</span></div>
+        <div class="h5 mb-0 mt-1 font-mono">Subtotal: ₹<span id="selected-seat-total">0.00</span></div>
+      </div>
+      <button type="submit" class="btn btn-danger px-4 fw-semibold" id="proceed-checkout-btn" disabled>
+        Lock Seats &amp; Proceed
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/seat_selection.js' %}"></script>
+{% endblock %}

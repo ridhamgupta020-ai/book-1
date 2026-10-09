@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Movies — MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <h1 class="h2 fw-bold font-display mb-4">Explore Movies</h1>
+  <form method="get" class="row g-3 mb-4">
+    <div class="col-md-4">{{ form.q }}</div>
+    <div class="col-md-2">
+      <select name="genre" class="form-select bg-dark text-light border-secondary">
+        <option value="">All Genres</option>
+        {% for g in genres %}
+          <option value="{{ g }}" {% if request.GET.genre == g %}selected{% endif %}>{{ g }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="language" class="form-select bg-dark text-light border-secondary">
+        <option value="">All Languages</option>
+        {% for lang in languages %}
+          <option value="{{ lang }}" {% if request.GET.language == lang %}selected{% endif %}>{{ lang }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="sort" class="form-select bg-dark text-light border-secondary">
+        <option value="-release_date">Newest First</option>
+        <option value="title">Title (A–Z)</option>
+        <option value="duration_minutes">Duration</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-danger w-100">Filter</button>
+    </div>
+  </form>
+
+  <div class="row g-4">
+    {% for movie in page_obj %}
+      <div class="col-md-4">
+        <div class="card bg-cinema-surface border-secondary border-opacity-25 h-100">
+          <div class="card-body d-flex flex-column">
+            <div class="text-secondary small mb-1">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.duration_minutes }} mins</div>
+            <h2 class="h5 fw-bold">{{ movie.title }}</h2>
+            <p class="text-secondary small flex-grow-1">{{ movie.description|truncatewords:22 }}</p>
+            <a href="{{ movie.get_absolute_url }}" class="btn btn-outline-danger mt-2">Select Showtime</a>
+          </div>
+        </div>
+      </div>
+    {% empty %}
+      <div class="col-12 text-secondary py-5 text-center">No movies matched your filter criteria.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

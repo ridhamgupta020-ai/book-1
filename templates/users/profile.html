@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}My Profile — MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5" style="max-width: 720px;">
+  <div class="card bg-cinema-surface border-secondary border-opacity-25 p-4 mb-4">
+    <h1 class="h3 fw-bold font-display mb-3">Profile &amp; Preferences</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit" class="btn btn-danger px-4 fw-semibold">Save Changes</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

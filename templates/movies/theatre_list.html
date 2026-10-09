@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Partner Theatres — MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <h1 class="h2 fw-bold font-display mb-4">Partner Theatres &amp; Auditoriums</h1>
+  <div class="row g-4">
+    {% for theatre in theatres %}
+      <div class="col-md-6">
+        <div class="card bg-cinema-surface border-secondary border-opacity-25 h-100">
+          <div class="card-body">
+            <div class="text-danger small fw-semibold">{{ theatre.city }}</div>
+            <h2 class="h5 fw-bold mb-1">{{ theatre.name }}</h2>
+            <p class="text-secondary small mb-2">{{ theatre.address }}</p>
+            <div class="small text-secondary">{{ theatre.amenities }}</div>
+          </div>
+        </div>
+      </div>
+    {% empty %}
+      <div class="col-12 text-secondary">No active theatres configured.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,290 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'ridhamgupta020@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Entity Blueprint Validators (Pillar 2: The "Anti-Update-Gap")
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'preferredCity', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'preferredCity', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.uid == request.auth.uid &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.preferredCity is string && data.preferredCity.size() >= 1 && data.preferredCity.size() <= 60 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'phone', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'phone', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.uid == request.auth.uid &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.phone is string && data.phone.size() >= 0 && data.phone.size() <= 24 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminMember(data) {
+      return data.keys().hasAll(['uid', 'grantedAt']) &&
+        data.keys().hasOnly(['uid', 'grantedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.grantedAt is timestamp;
+    }
+
+    function isValidShowInventory(data) {
+      return data.keys().hasAll([
+          'showId', 'movieId', 'theatreId', 'screenName', 'showDate',
+          'startTime', 'bookedSeats', 'lastBookedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'showId', 'movieId', 'theatreId', 'screenName', 'showDate',
+          'startTime', 'bookedSeats', 'lastBookedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.showId is string && data.showId.size() >= 1 && data.showId.size() <= 128 && data.showId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.movieId is string && data.movieId.size() >= 1 && data.movieId.size() <= 128 && data.movieId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.theatreId is string && data.theatreId.size() >= 1 && data.theatreId.size() <= 128 && data.theatreId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.screenName is string && data.screenName.size() >= 1 && data.screenName.size() <= 64 &&
+        data.showDate is string && data.showDate.size() == 10 && data.showDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        data.startTime is string && data.startTime.size() == 5 && data.startTime.matches('^[0-9]{2}:[0-9]{2}$') &&
+        data.bookedSeats is list && data.bookedSeats.size() <= 64 &&
+        (data.bookedSeats.size() == 0 || (data.bookedSeats[0] is string && data.bookedSeats[0].size() >= 2 && data.bookedSeats[0].size() <= 6)) &&
+        data.lastBookedBy is string && data.lastBookedBy.size() >= 1 && data.lastBookedBy.size() <= 128 && data.lastBookedBy.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.lastBookedBy == request.auth.uid &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll([
+          'bookingRef', 'userId', 'showId', 'movieId', 'movieTitle',
+          'theatreName', 'screenName', 'showDate', 'startTime', 'seats',
+          'subtotalAmount', 'convenienceFee', 'totalAmount', 'status',
+          'paymentStatus', 'paymentTxnId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'bookingRef', 'userId', 'showId', 'movieId', 'movieTitle',
+          'theatreName', 'screenName', 'showDate', 'startTime', 'seats',
+          'subtotalAmount', 'convenienceFee', 'totalAmount', 'status',
+          'paymentStatus', 'paymentTxnId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.bookingRef is string && data.bookingRef.size() >= 6 && data.bookingRef.size() <= 32 && data.bookingRef.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.userId == request.auth.uid &&
+        data.showId is string && data.showId.size() >= 1 && data.showId.size() <= 128 && data.showId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.movieId is string && data.movieId.size() >= 1 && data.movieId.size() <= 128 && data.movieId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.movieTitle is string && data.movieTitle.size() >= 1 && data.movieTitle.size() <= 120 &&
+        data.theatreName is string && data.theatreName.size() >= 1 && data.theatreName.size() <= 120 &&
+        data.screenName is string && data.screenName.size() >= 1 && data.screenName.size() <= 64 &&
+        data.showDate is string && data.showDate.size() == 10 && data.showDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        data.startTime is string && data.startTime.size() == 5 && data.startTime.matches('^[0-9]{2}:[0-9]{2}$') &&
+        data.seats is list && data.seats.size() >= 1 && data.seats.size() <= 10 &&
+        data.seats[0] is string && data.seats[0].size() >= 2 && data.seats[0].size() <= 6 &&
+        data.subtotalAmount is number && data.subtotalAmount >= 0 && data.subtotalAmount <= 100000 &&
+        data.convenienceFee is number && data.convenienceFee >= 0 && data.convenienceFee <= 20000 &&
+        data.totalAmount is number && data.totalAmount >= 0 && data.totalAmount <= 120000 &&
+        data.status is string && data.status.size() >= 9 && data.status.size() <= 20 &&
+        (data.status == 'pending_payment' || data.status == 'confirmed' || data.status == 'cancelled') &&
+        data.paymentStatus is string && data.paymentStatus.size() >= 4 && data.paymentStatus.size() <= 16 &&
+        (data.paymentStatus == 'pending' || data.paymentStatus == 'paid' || data.paymentStatus == 'refunded') &&
+        data.paymentTxnId is string && data.paymentTxnId.size() >= 4 && data.paymentTxnId.size() <= 64 && data.paymentTxnId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // 1. Public User Profiles: /users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+      allow create: if isOwner(userId) &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'preferredCity', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidId(userId);
+
+      // 2. Isolated PII Subcollection: /users/{userId}/private/{docId}
+      match /private/{docId} {
+        allow get: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          docId == 'info' &&
+          (isOwner(userId) || isAdmin()) &&
+          get(/databases/$(database)/documents/users/$(userId)).data.uid == userId;
+        allow list: if false;
+        allow create: if isOwner(userId) &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          docId == 'info' &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == userId &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          getAfter(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          docId == 'info' &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == existing().uid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid &&
+          (
+            isAdmin() ||
+            (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'email', 'updatedAt']))
+          );
+        allow delete: if isAdmin() && isValidId(userId) && isValidId(docId);
+      }
+    }
+
+    // 3. Trusted Administrators Registry: /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if false;
+      allow create: if isAdmin() &&
+        isValidId(adminId) &&
+        isValidAdminMember(incoming()) &&
+        incoming().uid == adminId &&
+        incoming().grantedAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // 4. Real-Time Show Seat Occupancy: /shows/{showId}
+    match /shows/{showId} {
+      allow get: if isValidId(showId);
+      allow list: if false;
+      allow create: if isVerifiedUser() &&
+        isValidId(showId) &&
+        isValidShowInventory(incoming()) &&
+        incoming().showId == showId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(showId) &&
+        isValidShowInventory(incoming()) &&
+        incoming().showId == existing().showId &&
+        incoming().movieId == existing().movieId &&
+        incoming().theatreId == existing().theatreId &&
+        incoming().screenName == existing().screenName &&
+        incoming().showDate == existing().showDate &&
+        incoming().startTime == existing().startTime &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['bookedSeats', 'lastBookedBy', 'updatedAt'])
+        );
+      allow delete: if isAdmin() && isValidId(showId);
+    }
+
+    // 5. Bookings Collection: /bookings/{bookingId}
+    match /bookings/{bookingId} {
+      allow get: if isVerifiedUser() &&
+        isValidId(bookingId) &&
+        (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() &&
+        existing().userId == request.auth.uid;
+      allow create: if isVerifiedUser() &&
+        isValidId(bookingId) &&
+        isValidBooking(incoming()) &&
+        incoming().bookingRef == bookingId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        existsAfter(/databases/$(database)/documents/shows/$(incoming().showId)) &&
+        getAfter(/databases/$(database)/documents/shows/$(incoming().showId)).data.lastBookedBy == request.auth.uid;
+      allow update: if isVerifiedUser() &&
+        isValidId(bookingId) &&
+        isValidBooking(incoming()) &&
+        incoming().bookingRef == existing().bookingRef &&
+        incoming().userId == existing().userId &&
+        incoming().showId == existing().showId &&
+        incoming().movieId == existing().movieId &&
+        incoming().movieTitle == existing().movieTitle &&
+        incoming().theatreName == existing().theatreName &&
+        incoming().screenName == existing().screenName &&
+        incoming().showDate == existing().showDate &&
+        incoming().startTime == existing().startTime &&
+        incoming().seats == existing().seats &&
+        incoming().subtotalAmount == existing().subtotalAmount &&
+        incoming().convenienceFee == existing().convenienceFee &&
+        incoming().totalAmount == existing().totalAmount &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().userId == request.auth.uid &&
+            existing().status != 'cancelled' &&
+            (
+              // Action 1: Confirm Payment
+              (
+                existing().status == 'pending_payment' &&
+                incoming().status == 'confirmed' &&
+                incoming().paymentStatus == 'paid' &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentStatus', 'paymentTxnId', 'updatedAt'])
+              ) ||
+              // Action 2: Cancel Booking
+              (
+                (existing().status == 'pending_payment' || existing().status == 'confirmed') &&
+                incoming().status == 'cancelled' &&
+                incoming().paymentStatus == 'refunded' &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentStatus', 'updatedAt']) &&
+                existsAfter(/databases/$(database)/documents/shows/$(existing().showId)) &&
+                getAfter(/databases/$(database)/documents/shows/$(existing().showId)).data.lastBookedBy == request.auth.uid
+              )
+            )
+          )
+        );
+      allow delete: if isAdmin() && isValidId(bookingId);
+    }
+  }
+}

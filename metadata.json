@@ -1,0 +1,6 @@
+{
+  "name": "MyBookShow",
+  "description": "Premiere cinema ticket reservation platform with interactive auditorium seat locking, dynamic showtime scheduling, QR ticket generation, and full Django + Supabase PostgreSQL deployment architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

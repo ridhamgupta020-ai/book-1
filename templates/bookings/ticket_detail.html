@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}E-Ticket {{ booking.booking_reference }} | MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5" style="max-width: 720px;">
+  <div class="card bg-cinema-surface border-secondary border-opacity-25 p-4">
+    <div class="row align-items-center g-4">
+      <div class="col-md-8">
+        <div class="text-danger small fw-semibold mb-1">Verified E-Ticket &middot; {{ booking.get_status_display }}</div>
+        <h1 class="h3 fw-bold font-display mb-2">{{ booking.show.movie.title }}</h1>
+        <p class="text-secondary small mb-3">
+          {{ booking.show.screen.theatre.name }} ({{ booking.show.screen.theatre.city }}) &middot; {{ booking.show.screen.name }}
+        </p>
+        <div class="font-mono small mb-3">
+          <div><strong>Booking Ref:</strong> {{ booking.booking_reference }}</div>
+          <div><strong>Showtime:</strong> {{ booking.show.start_time|date:"D, d M Y H:i" }}</div>
+          <div><strong>Seats:</strong> {% for bs in booking.booking_seats.all %}{{ bs.show_seat.seat.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+          <div><strong>Total Paid:</strong> ₹{{ booking.total_amount }} ({{ booking.payment_transaction_id }})</div>
+        </div>
+        <div class="d-flex gap-2 d-print-none">
+          <button onclick="window.print()" class="btn btn-outline-light btn-sm px-3">Print Ticket</button>
+          {% if booking.is_cancellable %}
+            <form method="post" action="{% url 'bookings:cancel_booking' booking.booking_reference %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger btn-sm px-3">Cancel Booking</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-4 text-center">
+        <img src="{{ qr_data_uri }}" alt="Booking QR Code" class="img-fluid rounded bg-white p-2" style="max-width: 180px;" />
+        <div class="font-mono small text-secondary mt-2">{{ booking.booking_reference }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
