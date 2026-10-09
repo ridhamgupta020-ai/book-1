@@ -97,24 +97,53 @@ SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key`,
   },
   {
     id: 'render-yaml',
-    path: 'render.yaml & build.sh',
+    path: 'render.yaml, build.sh & gunicorn.conf.py',
     category: 'Render Deployment',
-    summary: 'Primary production deployment blueprint running Gunicorn WSGI and linking to Supabase PostgreSQL.',
+    summary: 'Tailored Render Blueprint, build script, and Gunicorn config engineered to prevent ModuleNotFoundError during deployment.',
     content: `# render.yaml
 services:
   - type: web
     name: mybookshow-web
     runtime: python
+    region: singapore
     plan: free
-    buildCommand: "./build.sh"
-    startCommand: "gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 60"
+    branch: main
+    rootDir: .
+    buildCommand: "bash ./build.sh"
+    startCommand: "gunicorn bookmyseat.wsgi:application --config gunicorn.conf.py --bind 0.0.0.0:\${PORT:-10000}"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: PYTHONPATH
+        value: "."
+      - key: DJANGO_SETTINGS_MODULE
+        value: "bookmyseat.settings"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
 
 # build.sh
 #!/usr/bin/env bash
 set -o errexit
-pip install -r requirements.txt
-python manage.py collectstatic --noinput
-python manage.py migrate --noinput`,
+set -o pipefail
+set -o nounset
+
+PROJECT_ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+cd "\${PROJECT_ROOT}"
+export PYTHONPATH="\${PROJECT_ROOT}:\${PYTHONPATH:-}"
+export DJANGO_SETTINGS_MODULE="bookmyseat.settings"
+
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install --no-cache-dir -r "\${PROJECT_ROOT}/requirements.txt"
+python -c "import bookmyseat.wsgi, app; print('WSGI verified')"
+python manage.py check
+python manage.py collectstatic --noinput --clear
+if [ -n "\${DATABASE_URL:-}" ]; then
+    python manage.py migrate --noinput
+fi`,
   },
   {
     id: 'supabase-cli',

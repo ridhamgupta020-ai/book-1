@@ -28,11 +28,29 @@ if not SECRET_KEY or SECRET_KEY == "replace-with-a-generated-django-secret":
 
 raw_allowed_hosts = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1" if DEBUG else "")
 ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(",") if h.strip()]
+
+# Automatically trust Render and Vercel assigned hostnames when deployed
+render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
+
+vercel_url = os.getenv("VERCEL_URL", "").strip()
+if vercel_url and vercel_url not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(vercel_url)
+
 if not DEBUG and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("CRITICAL: ALLOWED_HOSTS must be configured when DEBUG=False.")
 
 raw_csrf_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "")
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(",") if o.strip()]
+if render_hostname:
+    render_origin = f"https://{render_hostname}"
+    if render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(render_origin)
+if vercel_url:
+    vercel_origin = f"https://{vercel_url}"
+    if vercel_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(vercel_origin)
 
 # Supabase Project Metadata (Project Ref: iqxcgzrfjplernbidkfd)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://iqxcgzrfjplernbidkfd.supabase.co").strip()

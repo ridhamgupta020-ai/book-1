@@ -105,6 +105,7 @@ git push -u origin main
 
 | Symptom / Error | Root Cause | Resolution |
 | :--- | :--- | :--- |
+| `ModuleNotFoundError: No module named 'app'` | Render manual Web Service defaults Start Command to `gunicorn app:app` instead of `gunicorn bookmyseat.wsgi:application`. | Set Render **Start Command** to `gunicorn bookmyseat.wsgi:application` (a root `app.py` WSGI bridge is also included so `gunicorn app:app` works automatically). |
 | `ImproperlyConfigured: SECRET_KEY...` | `SECRET_KEY` missing or left as placeholder when `DEBUG=False`. | Set a real random `SECRET_KEY` in Render/Vercel Environment Variables. |
 | `OperationalError: Network is unreachable` | Direct Supabase host (`db.<ref>.supabase.co`) uses IPv6, which some PaaS containers lack. | Switch `DATABASE_URL` to the **Supabase IPv4 Session Pooler** (`aws-0-<region>.pooler.supabase.com:5432`). |
 | `OperationalError: SSL connection has been closed` | Missing SSL mode or stale pooled connection. | Ensure `?sslmode=require` is present; `CONN_HEALTH_CHECKS=True` is enabled in `settings.py`. |

@@ -1,21 +1,44 @@
+# ==============================================================================
+# Render Blueprint Specification for MyBookShow (Django 5.1 + Supabase Postgres)
+# ==============================================================================
+# Specifically structured to eliminate `ModuleNotFoundError` on Render by:
+# 1. Explicitly binding Gunicorn to `bookmyseat.wsgi:application` (instead of
+#    Render's default manual `gunicorn app:app` command).
+# 2. Enforcing `PYTHONPATH=.` and `DJANGO_SETTINGS_MODULE=bookmyseat.settings`
+#    so Python always resolves project packages from `/opt/render/project/src`.
+# 3. Pinning `PYTHON_VERSION=3.12.6` to ensure prebuilt binary wheel support
+#    for `psycopg2-binary` and `Pillow`.
+# ==============================================================================
+
 services:
   - type: web
     name: mybookshow-web
     runtime: python
+    region: singapore
     plan: free
-    buildCommand: "./build.sh"
-    startCommand: "gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 60"
+    branch: main
+    rootDir: .
+    buildCommand: "bash ./build.sh"
+    startCommand: "gunicorn bookmyseat.wsgi:application --config gunicorn.conf.py --bind 0.0.0.0:${PORT:-10000}"
+    healthCheckPath: "/"
+    autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.6
+        value: "3.12.6"
+      - key: PYTHONPATH
+        value: "."
+      - key: DJANGO_SETTINGS_MODULE
+        value: "bookmyseat.settings"
+      - key: WEB_CONCURRENCY
+        value: "3"
       - key: DEBUG
         value: "False"
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        sync: false # Supply your Supabase IPv4 Session Pooler URI in Render Dashboard
       - key: ALLOWED_HOSTS
-        value: ".onrender.com"
+        value: ".onrender.com,localhost,127.0.0.1"
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://*.onrender.com"
       - key: SUPABASE_URL
