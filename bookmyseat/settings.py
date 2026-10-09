@@ -117,9 +117,14 @@ ASGI_APPLICATION = "bookmyseat.asgi.application"
 
 # Database Configuration: Supabase PostgreSQL via DATABASE_URL
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-if not DATABASE_URL:
-    # In Vercel serverless (/var/task is read-only), use /tmp/db.sqlite3 if DATABASE_URL is not yet configured
-    sqlite_path = Path("/tmp/db.sqlite3") if IS_VERCEL else (BASE_DIR / "db.sqlite3")
+_is_placeholder_db = (
+    not DATABASE_URL
+    or "YOUR_PASSWORD" in DATABASE_URL
+    or "YOUR_DATABASE_HOST" in DATABASE_URL
+)
+
+if _is_placeholder_db:
+    sqlite_path = Path("/tmp/db.sqlite3") if (IS_VERCEL or IS_RENDER) else (BASE_DIR / "db.sqlite3")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -159,21 +164,17 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Enable WhiteNoise finders so Vercel serverless functions serve static/ even without collectstatic
+# Enable WhiteNoise finders so Render and Vercel serve static/ even if collectstatic was skipped
 WHITENOISE_USE_FINDERS = True
 WHITENOISE_AUTOREFRESH = DEBUG
 
-_has_manifest = (STATIC_ROOT / "staticfiles.json").exists()
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": (
-            "whitenoise.storage.CompressedManifestStaticFilesStorage"
-            if _has_manifest
-            else "whitenoise.storage.CompressedStaticFilesStorage"
-        ),
+        # Use CompressedStaticFilesStorage so missing manifest files never trigger HTTP 500
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 

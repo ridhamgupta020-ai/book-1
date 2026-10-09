@@ -1,19 +1,31 @@
 from datetime import datetime
 from django.core.paginator import Paginator
+from django.db import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
+from bookmyseat.bootstrap import ensure_database_ready
 from .forms import MovieFilterForm
 from .models import Movie, Show, Theatre
 
 
 def home_view(request):
-    featured_movies = Movie.objects.filter(
-        is_featured=True, status=Movie.Status.NOW_SHOWING
-    )[:4]
-    now_showing = Movie.objects.filter(status=Movie.Status.NOW_SHOWING)[:8]
-    coming_soon = Movie.objects.filter(status=Movie.Status.COMING_SOON)[:4]
-    theatres = Theatre.objects.filter(is_active=True)[:6]
+    try:
+        featured_movies = list(
+            Movie.objects.filter(is_featured=True, status=Movie.Status.NOW_SHOWING)[:4]
+        )
+        now_showing = list(Movie.objects.filter(status=Movie.Status.NOW_SHOWING)[:8])
+        coming_soon = list(Movie.objects.filter(status=Movie.Status.COMING_SOON)[:4])
+        theatres = list(Theatre.objects.filter(is_active=True)[:6])
+    except (OperationalError, ProgrammingError):
+        ensure_database_ready()
+        featured_movies = list(
+            Movie.objects.filter(is_featured=True, status=Movie.Status.NOW_SHOWING)[:4]
+        )
+        now_showing = list(Movie.objects.filter(status=Movie.Status.NOW_SHOWING)[:8])
+        coming_soon = list(Movie.objects.filter(status=Movie.Status.COMING_SOON)[:4])
+        theatres = list(Theatre.objects.filter(is_active=True)[:6])
+
     return render(
         request,
         "home.html",
