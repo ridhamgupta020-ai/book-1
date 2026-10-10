@@ -36,7 +36,7 @@ if (button && message && label && configNode) {
       case "auth/operation-not-allowed":
         return "Google sign-in is not enabled for this Firebase project.";
       case "auth/invalid-api-key":
-        return "Firebase configuration is invalid. Check the public Firebase web settings.";
+        return "Firebase configuration is invalid. Ask the site administrator to verify the Firebase web settings in Render.";
       case "auth/network-request-failed":
         return "Could not reach Firebase. Check your network connection and try again.";
       case "auth/popup-closed-by-user":
@@ -89,14 +89,6 @@ if (button && message && label && configNode) {
     window.location.assign(result.redirect_url);
   };
 
-  const appName = "mybookshow-web";
-  const app = getApps().some((item) => item.name === appName)
-    ? getApp(appName)
-    : initializeApp(config, appName);
-  const auth = getAuth(app);
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-
   const finishCredential = async (user) => {
     setBusy(true);
     showMessage("");
@@ -112,41 +104,58 @@ if (button && message && label && configNode) {
     button.disabled = true;
     showMessage("Google sign-in is not configured. Ask the site administrator to add Firebase web settings.");
   } else {
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          return finishCredential(result.user);
-        }
-        return undefined;
-      })
-      .catch((error) => showMessage(errorMessage(error)));
+    let auth;
+    try {
+      const appName = "mybookshow-web";
+      const app = getApps().some((item) => item.name === appName)
+        ? getApp(appName)
+        : initializeApp(config, appName);
+      auth = getAuth(app);
+    } catch (error) {
+      button.disabled = true;
+      showMessage(errorMessage(error));
+    }
 
-    button.addEventListener("click", async () => {
-      setBusy(true);
-      showMessage("");
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-        const result = await signInWithPopup(auth, provider);
-        await completeDjangoSession(result.user);
-      } catch (error) {
-        if (
-          error?.code === "auth/popup-blocked" ||
-          error?.code === "auth/operation-not-supported-in-this-environment"
-        ) {
-          try {
-            await setPersistence(auth, browserLocalPersistence);
-            await signInWithRedirect(auth, provider);
-            return;
-          } catch (redirectError) {
-            showMessage(errorMessage(redirectError));
+    if (auth) {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result) {
+            return finishCredential(result.user);
           }
-        } else if (error instanceof Error && !error.code) {
-          showMessage(error.message);
-        } else {
-          showMessage(errorMessage(error));
+          return undefined;
+        })
+        .catch((error) => showMessage(errorMessage(error)));
+
+      button.addEventListener("click", async () => {
+        setBusy(true);
+        showMessage("");
+        try {
+          await setPersistence(auth, browserLocalPersistence);
+          const result = await signInWithPopup(auth, provider);
+          await completeDjangoSession(result.user);
+        } catch (error) {
+          if (
+            error?.code === "auth/popup-blocked" ||
+            error?.code === "auth/operation-not-supported-in-this-environment"
+          ) {
+            try {
+              await setPersistence(auth, browserLocalPersistence);
+              await signInWithRedirect(auth, provider);
+              return;
+            } catch (redirectError) {
+              showMessage(errorMessage(redirectError));
+            }
+          } else if (error instanceof Error && !error.code) {
+            showMessage(error.message);
+          } else {
+            showMessage(errorMessage(error));
+          }
+          setBusy(false);
         }
-        setBusy(false);
-      }
-    });
+      });
+    }
   }
 }
