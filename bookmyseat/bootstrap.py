@@ -9,11 +9,16 @@ Ensures that deployments on Render and Vercel never return HTTP 500 due to:
 
 from datetime import date, timedelta
 from decimal import Decimal
+import logging
 from pathlib import Path
 from django.conf import settings
 from django.core.management import call_command
 from django.db import connections
+from django.db.utils import DatabaseError
 from django.utils import timezone
+
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_database_ready():
@@ -24,18 +29,16 @@ def ensure_database_ready():
     db_conn = connections["default"]
     try:
         db_conn.ensure_connection()
-    except Exception as exc:
-        print(
-            f"[MyBookShow DB Warning]: Primary DATABASE_URL connection failed ({exc}). "
-            "If on Render/Vercel, ensure DATABASE_URL uses the Supabase IPv4 Session Pooler "
-            "(aws-0-<region>.pooler.supabase.com:5432) with your real database password. "
-            "Falling back to local SQLite database so the web service stays online."
+    except DatabaseError as exc:
+        logger.warning(
+            "Primary database connection failed (%s); switching to the local SQLite fallback. "
+            "For Supabase, verify DATABASE_URL uses a reachable IPv4 Session Pooler.",
+            type(exc).__name__,
         )
         db_conn.close()
-        sqlite_fallback = Path("/tmp/mybookshow_fallback.sqlite3")
-        settings.DATABASES["default"] = {
+        fallback_config = {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": str(sqlite_fallback),
+            "NAME": str(Path("/tmp/mybookshow_fallback.sqlite3")),
             "ATOMIC_REQUESTS": False,
             "AUTOCOMMIT": True,
             "CONN_MAX_AGE": 0,
@@ -47,18 +50,17 @@ def ensure_database_ready():
             "HOST": "",
             "PORT": "",
         }
-        connections.settings["default"] = settings.DATABASES["default"]
+        settings.DATABASES["default"] = fallback_config
+        connections.settings["default"] = fallback_config
+        db_conn.settings_dict = fallback_config
         db_conn = connections["default"]
 
-    try:
-        existing_tables = db_conn.introspection.table_names()
-        if "movies_movie" not in existing_tables or "auth_user" not in existing_tables:
-            print("[MyBookShow Bootstrap]: Running pending Django migrations...")
-            call_command("migrate", interactive=False, verbosity=1)
+    existing_tables = db_conn.introspection.table_names()
+    if "movies_movie" not in existing_tables or "auth_user" not in existing_tables:
+        logger.info("Running pending Django migrations.")
+        call_command("migrate", interactive=False, verbosity=1)
 
-        _seed_initial_catalog()
-    except Exception as exc:
-        print(f"[MyBookShow Bootstrap Error]: {exc}")
+    _seed_initial_catalog()
 
 
 def _seed_initial_catalog():
@@ -67,7 +69,7 @@ def _seed_initial_catalog():
     if Movie.objects.exists():
         return
 
-    print("[MyBookShow Bootstrap]: Seeding initial movies, theatres, screens, and showtimes...")
+    logger.info("Seeding initial movies, theatres, screens, and showtimes.")
     today = date.today()
     movies_data = [
         {
