@@ -215,19 +215,101 @@ main .container.py-5 {
   transform: scale(1.025);
 }
 
+.movie-detail-container {
+  width: min(100%, 1150px);
+  margin-inline: auto;
+  padding: 1.75rem 1.5rem 2rem;
+}
+
 .movie-detail-header {
   display: grid;
-  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   align-items: start;
-  gap: 2rem;
+  gap: 1.75rem;
 }
 
 .movie-detail-poster {
-  width: 100%;
+  display: block;
+  width: 200px;
+  height: 300px;
   aspect-ratio: 2 / 3;
   object-fit: cover;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 0.75rem;
+  object-position: center;
+  border: 1px solid #273244;
+  border-radius: 0.625rem;
+  flex-shrink: 0;
+}
+
+.movie-detail-info {
+  min-width: 0;
+  padding-top: 0.15rem;
+}
+
+.movie-detail-meta {
+  margin-bottom: 0.45rem;
+}
+
+.movie-detail-title {
+  margin: 0;
+  font-size: clamp(1.65rem, 3vw, 2rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.movie-detail-description {
+  max-width: 72ch;
+  margin: 0.8rem 0 1rem;
+  line-height: 1.65;
+}
+
+.movie-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1.25rem;
+  color: #9ca3af;
+  font-size: 0.8125rem;
+}
+
+.movie-detail-facts > div {
+  min-width: 0;
+}
+
+.movie-detail-facts dt {
+  color: #f9fafb;
+  font-weight: 600;
+}
+
+.movie-detail-facts dd {
+  margin: 0.1rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.movie-theatres-section {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #273244;
+}
+
+.movie-city-filter {
+  width: min(100%, 180px);
+}
+
+.theatre-card {
+  margin-bottom: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+.theatre-card .card-body {
+  padding: 0.875rem 1rem;
+}
+
+.theatre-info {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.theatre-showtimes {
+  flex-shrink: 0;
 }
 
 @media (max-width: 575.98px) {
@@ -302,13 +384,47 @@ main .container.py-5 {
     min-height: 168px;
   }
 
+  .movie-detail-container {
+    padding: 1.25rem 1rem 1.5rem;
+  }
+
   .movie-detail-header {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 140px minmax(0, 1fr);
     gap: 1rem;
   }
 
   .movie-detail-poster {
-    max-width: 12rem;
+    width: 140px;
+    height: 210px;
+  }
+
+  .movie-detail-title {
+    font-size: 1.35rem;
+  }
+
+  .movie-detail-description {
+    margin-block: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .movie-detail-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .movie-theatres-section {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+  }
+
+  .theatre-showtimes {
+    width: 100%;
+  }
+
+  .theatre-showtimes .btn {
+    padding: 0.4rem 0.55rem !important;
+    font-size: 0.7rem;
   }
 }
 
@@ -320,6 +436,20 @@ main .container.py-5 {
   .site-nav .nav-link {
     padding-inline: 0.25rem;
     font-size: 0.7rem;
+  }
+
+  .movie-detail-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .movie-detail-poster {
+    width: 150px;
+    height: 225px;
+    margin-inline: auto;
+  }
+
+  .movie-detail-info {
+    width: 100%;
   }
 }
 

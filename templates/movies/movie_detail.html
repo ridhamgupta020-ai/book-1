@@ -2,8 +2,8 @@
 {% load static %}
 {% block title %}{{ movie.title }} — Showtimes | MyBookShow{% endblock %}
 {% block content %}
-<div class="container py-5">
-  <div class="movie-detail-header mb-5">
+<div class="container movie-detail-container">
+  <section class="movie-detail-header" aria-labelledby="movie-detail-title">
     <img
       class="movie-detail-poster"
       src="{{ movie.display_poster_url }}"
@@ -14,36 +14,70 @@
       decoding="async"
       onerror="this.onerror=null;this.src=this.dataset.fallback"
     />
-    <div>
-      <div class="text-secondary small mb-2">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.certificate }} &middot; {{ movie.duration_minutes }} mins</div>
-      <h1 class="display-6 fw-bold font-display mb-3">{{ movie.title }}</h1>
-      <p class="text-secondary col-lg-8">{{ movie.description }}</p>
-      <div class="small text-secondary">
-        <strong>Director:</strong> {{ movie.director }} &nbsp;|&nbsp; <strong>Cast:</strong> {{ movie.cast }}
-      </div>
-    </div>
-  </div>
-  </div>
-
-  <h2 class="h4 fw-bold mb-4">Available Theatres &amp; Showtimes</h2>
-  {% for theatre, shows in theatre_schedule.items %}
-    <div class="card bg-cinema-surface border-secondary border-opacity-25 mb-3">
-      <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+    <div class="movie-detail-info">
+      <div class="movie-detail-meta text-secondary small">{{ movie.certificate }} &middot; {{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.duration_minutes }} mins</div>
+      <h1 id="movie-detail-title" class="movie-detail-title fw-bold font-display">{{ movie.title }}</h1>
+      <p class="movie-detail-description text-secondary">{{ movie.description }}</p>
+      <dl class="movie-detail-facts mb-0">
         <div>
-          <h3 class="h5 fw-bold mb-1">{{ theatre.name }} ({{ theatre.city }})</h3>
-          <div class="text-secondary small">{{ theatre.address }} &middot; {{ theatre.amenities }}</div>
+          <dt>Director</dt>
+          <dd>{{ movie.director }}</dd>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-          {% for show in shows %}
-            <a href="{% url 'bookings:seat_selection' show.id %}" class="btn btn-outline-light btn-sm px-3 py-2 font-mono">
-              {{ show.start_time|date:"d M, H:i" }} &middot; ₹{{ show.ticket_price }}
-            </a>
-          {% endfor %}
+        <div>
+          <dt>Cast</dt>
+          <dd>{{ movie.cast }}</dd>
         </div>
-      </div>
+        <div>
+          <dt>Language</dt>
+          <dd>{{ movie.language }}</dd>
+        </div>
+        <div>
+          <dt>Genre</dt>
+          <dd>{{ movie.genre }}</dd>
+        </div>
+      </dl>
     </div>
-  {% empty %}
-    <div class="alert alert-secondary">No upcoming showtimes found for the selected filters.</div>
-  {% endfor %}
+  </section>
+
+  <section class="movie-theatres-section" aria-labelledby="movie-theatres-title">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-2 mb-3">
+      <div>
+        <h2 id="movie-theatres-title" class="h4 fw-bold mb-1">Available Theatres &amp; Showtimes</h2>
+        <p class="text-secondary small mb-0">Choose a screening to select your seats.</p>
+      </div>
+      {% if cities %}
+        <form method="get" class="movie-city-filter">
+          <label for="movie-city" class="visually-hidden">Filter by city</label>
+          <select id="movie-city" name="city" class="form-select form-select-sm bg-dark text-light border-secondary" onchange="this.form.submit()">
+            <option value="">All cities</option>
+            {% for city in cities %}
+              <option value="{{ city }}" {% if selected_city == city %}selected{% endif %}>{{ city }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      {% endif %}
+    </div>
+
+    {% for theatre, shows in theatre_schedule.items %}
+      <article class="card theatre-card bg-cinema-surface border-secondary border-opacity-25">
+        <div class="card-body d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+          <div class="theatre-info">
+            <h3 class="h6 fw-bold mb-1">{{ theatre.name }} <span class="text-secondary">({{ theatre.city }})</span></h3>
+            <p class="text-secondary small mb-1">{{ theatre.address }}</p>
+            <p class="text-secondary small mb-0">{{ theatre.amenities }}</p>
+          </div>
+          <div class="d-flex flex-wrap gap-2 theatre-showtimes">
+            {% for show in shows %}
+              <a href="{% url 'bookings:seat_selection' show.id %}" class="btn btn-outline-light btn-sm px-3 py-2 font-mono">
+                {{ show.start_time|date:"d M, H:i" }} &middot; ₹{{ show.ticket_price }}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      </article>
+    {% empty %}
+      <div class="alert alert-secondary mb-0">No upcoming showtimes found for the selected filters.</div>
+    {% endfor %}
+  </section>
 </div>
 {% endblock %}
