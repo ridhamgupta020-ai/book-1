@@ -7,6 +7,7 @@
 body.bg-cinema-canvas {
   background-color: var(--cinema-canvas);
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 0.9375rem;
 }
 
 .font-display {
@@ -20,6 +21,38 @@ body.bg-cinema-canvas {
 
 .bg-cinema-surface {
   background-color: var(--cinema-surface);
+}
+
+.site-header-inner {
+  min-height: 60px;
+  padding-block: 0.35rem;
+}
+
+.site-nav {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.site-nav .nav-link {
+  padding: 0.35rem 0.45rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.site-footer {
+  padding-block: 0.8rem;
+}
+
+.site-footer .d-flex {
+  gap: 1rem !important;
+}
+
+.page-compact {
+  padding-block: 1.75rem;
+}
+
+main .container.py-5 {
+  padding-block: 1.75rem !important;
 }
 
 .screen-arc {
@@ -46,7 +79,7 @@ body.bg-cinema-canvas {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  padding: 6rem 0;
+  padding: 2.5rem 0;
   background-color: #090d16;
   background-image:
     linear-gradient(90deg, rgba(9, 13, 22, 0.96) 0%, rgba(9, 13, 22, 0.78) 48%, rgba(9, 13, 22, 0.3) 100%),
@@ -57,11 +90,29 @@ body.bg-cinema-canvas {
 }
 
 .home-hero-content {
-  min-height: 18rem;
+  min-height: 0;
+  padding-block: 1rem;
+}
+
+.home-hero h1 {
+  max-width: 15ch;
+  font-size: clamp(1.9rem, 4vw, 2.75rem);
+  line-height: 1.12;
+}
+
+.home-hero .lead {
+  max-width: 58ch;
+  font-size: 1rem;
 }
 
 .movie-card {
+  width: 100%;
+  max-width: 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  border-radius: 0.5rem;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
@@ -73,6 +124,9 @@ body.bg-cinema-canvas {
 
 .movie-poster-link {
   display: block;
+  width: min(100%, 200px);
+  aspect-ratio: 2 / 3;
+  margin-inline: auto;
   overflow: hidden;
   background: #171d2a;
 }
@@ -80,9 +134,81 @@ body.bg-cinema-canvas {
 .movie-poster {
   display: block;
   width: 100%;
-  aspect-ratio: 2 / 3;
+  height: 100%;
   object-fit: cover;
+  object-position: center;
   transition: transform 220ms ease;
+}
+
+.movie-details {
+  flex: 1;
+  padding: 0.75rem;
+}
+
+.movie-details > .small:first-child {
+  font-size: 0.6875rem !important;
+  line-height: 1.4;
+}
+
+.movie-title {
+  margin-block: 0.25rem 0.4rem;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.movie-meta {
+  margin-bottom: 0.45rem;
+  font-size: 0.6875rem;
+}
+
+.movie-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-bottom: 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.book-ticket-button {
+  margin-top: auto !important;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8125rem;
+}
+
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 240px));
+  justify-content: center;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.movie-grid .movie-card {
+  height: 100%;
+}
+
+.home-movies-section {
+  padding-block: 1.5rem !important;
+}
+
+.home-movies-section > .container > .d-flex {
+  margin-bottom: 1rem !important;
+}
+
+.home-movies-section .movie-poster-link {
+  width: min(100%, 200px);
+}
+
+.home-movies-section .movie-details {
+  min-height: 176px;
+}
+
+.home-movies-section .movie-description {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .movie-card:hover .movie-poster {
@@ -106,16 +232,94 @@ body.bg-cinema-canvas {
 
 @media (max-width: 575.98px) {
   .home-hero {
-    padding: 4rem 0;
+    padding: 1.5rem 0;
     background-position: 62% center;
+  }
+
+  .home-hero-content {
+    padding-block: 0.5rem;
+  }
+
+  .site-header-inner {
+    flex-wrap: wrap;
+    justify-content: center !important;
+    gap: 0.25rem 0.75rem !important;
+    padding-block: 0.4rem;
+  }
+
+  .site-header-inner > .navbar-brand {
+    margin-right: 0;
+  }
+
+  .site-nav {
+    order: 3;
+    width: 100%;
+    gap: 0.15rem !important;
+  }
+
+  .site-nav .nav-link {
+    padding: 0.25rem 0.35rem;
+    font-size: 0.75rem;
+  }
+
+  .site-footer .d-flex {
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 0.85rem !important;
+  }
+
+  .page-compact {
+    padding-block: 1.25rem;
+  }
+
+  main .container.py-5 {
+    padding-block: 1.25rem !important;
+  }
+
+  .movie-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .movie-grid .movie-card {
+    max-width: 240px;
+    justify-self: center;
+  }
+
+  .movie-poster-link {
+    width: min(100%, 180px);
+  }
+
+  .movie-details {
+    padding: 0.6rem;
+  }
+
+  .movie-title {
+    font-size: 0.9rem;
+  }
+
+  .home-movies-section .movie-details {
+    min-height: 168px;
   }
 
   .movie-detail-header {
     grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
   }
 
   .movie-detail-poster {
-    max-width: 14rem;
+    max-width: 12rem;
+  }
+}
+
+@media (max-width: 359.98px) {
+  .movie-grid {
+    grid-template-columns: minmax(0, 240px);
+  }
+
+  .site-nav .nav-link {
+    padding-inline: 0.25rem;
+    font-size: 0.7rem;
   }
 }
 
