@@ -1,14 +1,28 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ movie.title }} — Showtimes | MyBookShow{% endblock %}
 {% block content %}
 <div class="container py-5">
-  <div class="mb-5">
-    <div class="text-secondary small mb-2">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.certificate }} &middot; {{ movie.duration_minutes }} mins</div>
-    <h1 class="display-6 fw-bold font-display mb-3">{{ movie.title }}</h1>
-    <p class="text-secondary col-lg-8">{{ movie.description }}</p>
-    <div class="small text-secondary">
-      <strong>Director:</strong> {{ movie.director }} &nbsp;|&nbsp; <strong>Cast:</strong> {{ movie.cast }}
+  <div class="movie-detail-header mb-5">
+    <img
+      class="movie-detail-poster"
+      src="{{ movie.display_poster_url }}"
+      data-fallback="{% static 'images/poster_chronos_horizon_1791521096648.jpg' %}"
+      alt="{{ movie.title }} poster"
+      width="896"
+      height="1200"
+      decoding="async"
+      onerror="this.onerror=null;this.src=this.dataset.fallback"
+    />
+    <div>
+      <div class="text-secondary small mb-2">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.certificate }} &middot; {{ movie.duration_minutes }} mins</div>
+      <h1 class="display-6 fw-bold font-display mb-3">{{ movie.title }}</h1>
+      <p class="text-secondary col-lg-8">{{ movie.description }}</p>
+      <div class="small text-secondary">
+        <strong>Director:</strong> {{ movie.director }} &nbsp;|&nbsp; <strong>Cast:</strong> {{ movie.cast }}
+      </div>
     </div>
+  </div>
   </div>
 
   <h2 class="h4 fw-bold mb-4">Available Theatres &amp; Showtimes</h2>

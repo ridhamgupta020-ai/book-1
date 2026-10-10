@@ -8,6 +8,9 @@ class UserProfile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile"
     )
+    firebase_uid = models.CharField(
+        max_length=128, unique=True, null=True, blank=True
+    )
     phone_number = models.CharField(max_length=20, blank=True, default="")
     preferred_city = models.CharField(max_length=80, default="Mumbai")
     updated_at = models.DateTimeField(auto_now=True)

@@ -1,5 +1,5 @@
-from django.contrib.auth import views as auth_views
 from django.urls import path, reverse_lazy
+from django.contrib.auth import views as auth_views
 from . import views
 
 app_name = "users"
@@ -8,11 +8,10 @@ urlpatterns = [
     path("register/", views.register_view, name="register"),
     path(
         "login/",
-        auth_views.LoginView.as_view(
-            template_name="users/login.html", redirect_authenticated_user=True
-        ),
+        views.MyBookShowLoginView.as_view(),
         name="login",
     ),
+    path("google-session/", views.google_session_view, name="google_session"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("profile/", views.profile_view, name="profile"),
     path(

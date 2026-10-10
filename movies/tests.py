@@ -46,6 +46,8 @@ class MovieAndShowTestCase(TestCase):
         response = self.client.get(reverse("movies:movie_list"), {"q": "Chronos", "genre": "Sci-Fi"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Chronos Horizon")
+        self.assertContains(response, "movie-poster")
+        self.assertContains(response, 'loading="lazy"')
 
     def test_prevent_overlapping_shows_on_same_screen(self):
         start = timezone.now() + timedelta(hours=3)

@@ -99,10 +99,14 @@ git push -u origin main
    - `CSRF_TRUSTED_ORIGINS` = `https://*.onrender.com`
    - `SUPABASE_URL` = `https://iqxcgzrfjplernbidkfd.supabase.co`
    - `SUPABASE_PUBLISHABLE_KEY` = `your-supabase-publishable-key`
+   - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, and `VITE_FIREBASE_APP_ID` = Firebase project's public Web app configuration values.
+   - `FIREBASE_ADMIN_CREDENTIALS` = the Firebase service account JSON, stored as a Render secret. Never commit this value.
 4. Render executes `./build.sh` (`pip install -r requirements.txt`, `python manage.py collectstatic --noinput`, `python manage.py migrate --noinput`) and starts Gunicorn with:
    ```bash
    gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 60
    ```
+5. In Firebase Console, enable **Authentication → Sign-in method → Google** and add the exact Render hostname (for example, `book-1-ya9s.onrender.com`) under **Authentication → Settings → Authorized domains**. Also enable the Google provider for the same Firebase project used by the Admin service account.
+6. Deploy the updated commit to Render. The deployment applies Django migrations; then test the Google flow on the deployed login page. The backend only creates a Django session after verifying a Google-provider Firebase ID token with a verified email.
 
 ---
 

@@ -69,6 +69,15 @@ if vercel_url:
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://iqxcgzrfjplernbidkfd.supabase.co").strip()
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
 
+FIREBASE_WEB_CONFIG = {
+    "apiKey": os.getenv("VITE_FIREBASE_API_KEY", "").strip(),
+    "authDomain": os.getenv("VITE_FIREBASE_AUTH_DOMAIN", "").strip(),
+    "projectId": os.getenv("VITE_FIREBASE_PROJECT_ID", "").strip(),
+    "storageBucket": os.getenv("VITE_FIREBASE_STORAGE_BUCKET", "").strip(),
+    "messagingSenderId": os.getenv("VITE_FIREBASE_MESSAGING_SENDER_ID", "").strip(),
+    "appId": os.getenv("VITE_FIREBASE_APP_ID", "").strip(),
+}
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

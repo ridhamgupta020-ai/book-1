@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Movies — MyBookShow{% endblock %}
 {% block content %}
 <div class="container py-5">
@@ -36,10 +37,24 @@
   <div class="row g-4">
     {% for movie in page_obj %}
       <div class="col-md-4">
-        <div class="card bg-cinema-surface border-secondary border-opacity-25 h-100">
+        <div class="card movie-card bg-cinema-surface border-secondary border-opacity-25 h-100">
+          <a href="{{ movie.get_absolute_url }}" class="movie-poster-link" aria-label="View {{ movie.title }}">
+            <img
+              class="movie-poster"
+              src="{{ movie.display_poster_url }}"
+              data-fallback="{% static 'images/poster_chronos_horizon_1791521096648.jpg' %}"
+              alt="{{ movie.title }} poster"
+              width="896"
+              height="1200"
+              loading="lazy"
+              decoding="async"
+              onerror="this.onerror=null;this.src=this.dataset.fallback"
+            />
+          </a>
           <div class="card-body d-flex flex-column">
-            <div class="text-secondary small mb-1">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.duration_minutes }} mins</div>
+            <div class="text-secondary small mb-1">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.certificate }}</div>
             <h2 class="h5 fw-bold">{{ movie.title }}</h2>
+            <p class="text-secondary small">{{ movie.duration_minutes }} mins</p>
             <p class="text-secondary small flex-grow-1">{{ movie.description|truncatewords:22 }}</p>
             <a href="{{ movie.get_absolute_url }}" class="btn btn-outline-danger mt-2">Select Showtime</a>
           </div>

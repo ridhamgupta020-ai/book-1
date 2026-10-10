@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
-<section class="py-5 border-bottom border-secondary border-opacity-25">
+<section class="home-hero border-bottom border-secondary border-opacity-25" style="--hero-image: url('{% static 'images/hero_cinema_auditorium_1791521078653.jpg' %}')">
   <div class="container">
-    <div class="row align-items-center g-4">
+    <div class="row align-items-center g-4 home-hero-content">
       <div class="col-lg-7">
         <p class="text-danger fw-semibold mb-2">Premiere IMAX &amp; Dolby Atmos Experiences</p>
         <h1 class="display-5 fw-bold font-display mb-3">Reserve Your Exact Auditorium Seat in Real Time.</h1>
@@ -27,7 +28,20 @@
     <div class="row g-4">
       {% for movie in now_showing %}
         <div class="col-sm-6 col-md-4 col-lg-3">
-          <div class="card bg-cinema-surface border-secondary border-opacity-25 h-100">
+          <div class="card movie-card bg-cinema-surface border-secondary border-opacity-25 h-100">
+            <a href="{{ movie.get_absolute_url }}" class="movie-poster-link" aria-label="View {{ movie.title }}">
+              <img
+                class="movie-poster"
+                src="{{ movie.display_poster_url }}"
+                data-fallback="{% static 'images/poster_chronos_horizon_1791521096648.jpg' %}"
+                alt="{{ movie.title }} poster"
+                width="896"
+                height="1200"
+                loading="lazy"
+                decoding="async"
+                onerror="this.onerror=null;this.src=this.dataset.fallback"
+              />
+            </a>
             <div class="card-body d-flex flex-column">
               <div class="text-secondary small mb-1">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.certificate }}</div>
               <h3 class="h5 fw-bold mb-2">{{ movie.title }}</h3>

@@ -3,7 +3,11 @@ from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
+from django.templatetags.static import static
 from django.utils.text import slugify
+
+
+DEFAULT_POSTER_PATH = "images/poster_chronos_horizon_1791521096648.jpg"
 
 
 def validate_poster_size(file_obj):
@@ -68,6 +72,12 @@ class Movie(models.Model):
 
     def get_absolute_url(self):
         return reverse("movies:movie_detail", kwargs={"slug": self.slug})
+
+    @property
+    def display_poster_url(self):
+        if self.poster:
+            return self.poster.url
+        return self.poster_url or static(DEFAULT_POSTER_PATH)
 
     def __str__(self):
         return f"{self.title} ({self.language})"
