@@ -63,6 +63,11 @@ celery -A bookmyseat worker --loglevel=info
 celery -A bookmyseat beat --loglevel=info
 ```
 
+Booking migration `0005` preserves seat reservation history and marks only
+current, valid holds and paid reservations as active. A database-level partial
+unique constraint ensures a show seat can have at most one active booking
+entry; canceled and expired booking-seat rows remain available as history.
+
 For local payments, use Razorpay test-mode credentials. Configure the webhook
 URL as `http://localhost:8000/bookings/razorpay/webhook/` only when using a
 public tunnel; Razorpay cannot reach a localhost-only URL.

@@ -1,16 +1,18 @@
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 from django.core import mail
 from django.core import signing
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from unittest.mock import Mock, patch
 from movies.models import Movie, Screen, Seat, Show, ShowSeat, Theatre
-from .models import Booking, PaymentAttempt
+from .models import Booking, BookingSeat, PaymentAttempt
 from .payments import PaymentGatewayService
 
 
@@ -128,6 +130,9 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
         with patch("bookings.tasks.refund_booking.delay"):
             cancelled = confirmed.cancel_booking()
         self.assertEqual(cancelled.status, Booking.Status.CANCELLED)
+        self.assertFalse(
+            BookingSeat.objects.filter(booking=confirmed, is_active=True).exists()
+        )
         self.show_seat_a1.refresh_from_db()
         self.assertEqual(self.show_seat_a1.status, ShowSeat.Status.AVAILABLE)
         confirmed.payment_attempts.get().refresh_from_db()
@@ -146,8 +151,17 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
         updated = booking.update_pending_seats([self.show_seat_a2.id])
 
         self.assertEqual(
-            list(updated.booking_seats.values_list("show_seat_id", flat=True)),
+            list(
+                updated.booking_seats.filter(is_active=True).values_list(
+                    "show_seat_id", flat=True
+                )
+            ),
             [self.show_seat_a2.id],
+        )
+        self.assertEqual(updated.booking_seats.count(), 2)
+        self.assertEqual(
+            updated.booking_seats.filter(is_active=False).get().show_seat_id,
+            self.show_seat_a1.id,
         )
         self.assertEqual(updated.expires_at, original_expiration)
         self.assertEqual(updated.subtotal_amount, Decimal("250.00"))
@@ -155,6 +169,32 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
         self.show_seat_a2.refresh_from_db()
         self.assertEqual(self.show_seat_a1.status, ShowSeat.Status.AVAILABLE)
         self.assertEqual(self.show_seat_a2.status, ShowSeat.Status.HELD)
+
+    def test_database_prevents_active_reservation_for_a_seat_twice(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        competing_booking = Booking.objects.create(
+            user=self.user2,
+            show=self.show,
+            subtotal_amount=Decimal("250.00"),
+            convenience_fee=Decimal("20.00"),
+            total_amount=Decimal("270.00"),
+        )
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                BookingSeat.objects.create(
+                    booking=competing_booking,
+                    show_seat=self.show_seat_a1,
+                    price=Decimal("250.00"),
+                )
+
+        self.assertTrue(
+            BookingSeat.objects.filter(booking=booking, is_active=True).exists()
+        )
 
     def test_seats_cannot_change_after_payment_order_is_created(self):
         booking = Booking.create_pending_booking(
@@ -166,6 +206,107 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
 
         with self.assertRaises(ValidationError):
             booking.update_pending_seats([self.show_seat_a2.id])
+
+    def test_invalid_payment_signature_does_not_confirm_booking(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        order = PaymentGatewayService.create_payment_order(booking)
+        self.client.force_login(self.user1)
+
+        response = self.client.post(
+            reverse(
+                "bookings:payment_callback",
+                kwargs={"booking_reference": booking.booking_reference},
+            ),
+            {
+                "razorpay_order_id": order["order_id"],
+                "razorpay_payment_id": "pay-invalid-signature",
+                "razorpay_signature": "invalid",
+            },
+        )
+
+        booking.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(booking.status, Booking.Status.PENDING_PAYMENT)
+        self.assertEqual(
+            booking.payment_attempts.get().status, PaymentAttempt.Status.PENDING
+        )
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="webhook-secret")
+    def test_duplicate_capture_webhook_is_idempotent(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        order = PaymentGatewayService.create_payment_order(booking)
+        payment_id = "pay-webhook-captured"
+        body = json.dumps(
+            {
+                "event": "payment.captured",
+                "payload": {
+                    "payment": {
+                        "entity": {
+                            "id": payment_id,
+                            "order_id": order["order_id"],
+                            "amount": order["amount_paise"],
+                            "currency": order["currency"],
+                            "method": "card",
+                        }
+                    }
+                },
+            }
+        ).encode()
+
+        first_result = PaymentGatewayService.handle_webhook(
+            body=body, signature="valid", event_id="event-captured-1"
+        )
+        duplicate_result = PaymentGatewayService.handle_webhook(
+            body=body, signature="valid", event_id="event-captured-1"
+        )
+
+        booking.refresh_from_db()
+        self.assertTrue(first_result)
+        self.assertFalse(duplicate_result)
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+        self.assertEqual(booking.payment_transactions.count(), 1)
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET="webhook-secret")
+    def test_failed_payment_webhook_records_failure_without_confirming(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        order = PaymentGatewayService.create_payment_order(booking)
+        body = json.dumps(
+            {
+                "event": "payment.failed",
+                "payload": {
+                    "payment": {
+                        "entity": {
+                            "id": "pay-webhook-failed",
+                            "order_id": order["order_id"],
+                            "error_description": "Issuer declined the payment",
+                        }
+                    }
+                },
+            }
+        ).encode()
+
+        processed = PaymentGatewayService.handle_webhook(
+            body=body, signature="valid", event_id="event-failed-1"
+        )
+
+        booking.refresh_from_db()
+        attempt = booking.payment_attempts.get()
+        self.assertTrue(processed)
+        self.assertEqual(booking.status, Booking.Status.PENDING_PAYMENT)
+        self.assertEqual(attempt.status, PaymentAttempt.Status.FAILED)
+        self.assertEqual(attempt.failure_reason, "Issuer declined the payment")
 
     def test_checkout_allows_pre_payment_seat_changes_then_creates_order_on_pay(self):
         booking = Booking.create_pending_booking(
@@ -197,7 +338,11 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
         )
         booking.refresh_from_db()
         self.assertEqual(
-            list(booking.booking_seats.values_list("show_seat_id", flat=True)),
+            list(
+                booking.booking_seats.filter(is_active=True).values_list(
+                    "show_seat_id", flat=True
+                )
+            ),
             [self.show_seat_a2.pk],
         )
 
@@ -266,6 +411,28 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
             PaymentAttempt.Status.REFUND_PENDING,
         )
         queue.assert_called_once()
+
+    def test_expired_reservation_releases_and_deactivates_seat_history(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        booking.expires_at = timezone.now() - timedelta(seconds=1)
+        booking.save(update_fields=["expires_at"])
+        self.show_seat_a1.held_until = timezone.now() - timedelta(seconds=1)
+        self.show_seat_a1.save(update_fields=["held_until"])
+
+        result = PaymentGatewayService.reconcile_expired_booking(booking.pk)
+
+        booking.refresh_from_db()
+        self.show_seat_a1.refresh_from_db()
+        self.assertEqual(result, "expired")
+        self.assertEqual(booking.status, Booking.Status.EXPIRED)
+        self.assertEqual(self.show_seat_a1.status, ShowSeat.Status.AVAILABLE)
+        self.assertFalse(
+            BookingSeat.objects.filter(booking=booking, is_active=True).exists()
+        )
 
     def test_refund_completion_is_recorded_and_repeat_calls_are_idempotent(self):
         booking = self._confirm_booking()

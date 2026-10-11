@@ -6,7 +6,7 @@ from .models import Booking, BookingSeat, GatewayWebhookEvent, PaymentAttempt, P
 class BookingSeatInline(admin.TabularInline):
     model = BookingSeat
     extra = 0
-    readonly_fields = ("show_seat", "price")
+    readonly_fields = ("show_seat", "price", "is_active")
 
 
 @admin.register(Booking)
