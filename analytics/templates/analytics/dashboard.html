@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin analytics</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; color: #18212b; }
+    h1, h2 { margin-bottom: .5rem; } section { margin: 2rem 0; }
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { border-collapse: collapse; width: 100%; min-width: 34rem; margin-top: .75rem; }
+    th, td { border-bottom: 1px solid #d7dce1; padding: .55rem; text-align: left; }
+    th { background: #f2f4f6; } .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; }
+    .card { border: 1px solid #d7dce1; border-radius: .4rem; padding: 1rem; min-width: 0; }
+    .error { color: #a40000; } .note { color: #4d5965; } form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+    label { display: grid; gap: .25rem; } button, a.button { padding: .55rem .8rem; }
+    .chart { display: grid; gap: .45rem; max-height: 28rem; overflow: auto; padding: .25rem; }
+    .bar-row { display: grid; grid-template-columns: 5.5rem minmax(3rem, 1fr) minmax(5rem, auto); align-items: center; gap: .65rem; }
+    .bar-track { height: .8rem; background: #e9edf1; border-radius: 1rem; overflow: hidden; }
+    .bar { display: block; height: 100%; background: #b4233d; border-radius: inherit; min-width: 2px; }
+    .bar-value, .bar-label { font-size: .875rem; font-variant-numeric: tabular-nums; }
+    @media (max-width: 575px) {
+      body { margin-block: 1rem; padding-inline: .75rem; }
+      .bar-row { grid-template-columns: 4.2rem minmax(2rem, 1fr) minmax(4.5rem, auto); gap: .4rem; }
+      .bar-value, .bar-label { font-size: .75rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Booking analytics</h1>
+    <p>Staff-only reporting for booking creation dates and show start dates.</p>
+    <form method="get">
+      <label>Start date <input type="date" name="start_date" value="{{ start_date|date:'Y-m-d'|default:start_date }}" required></label>
+      <label>End date <input type="date" name="end_date" value="{{ end_date|date:'Y-m-d'|default:end_date }}" required></label>
+      <button type="submit">Apply dates</button>
+      {% if start_date and end_date %}
+        <a class="button" href="{% url 'analytics:export_bookings_csv' %}?start_date={{ start_date|date:'Y-m-d'|default:start_date|urlencode }}&amp;end_date={{ end_date|date:'Y-m-d'|default:end_date|urlencode }}">Stream CSV</a>
+      {% endif %}
+    </form>
+    {% if errors %}
+      <ul class="error" role="alert">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+      <p>Reports support at most {{ max_range_days }} inclusive days.</p>
+    {% endif %}
+  </header>
+
+  {% if totals %}
+    <p class="note">Financial charts group bookings by creation date and show net revenue after recorded refunds. Cancellation and refund counts use their actual event timestamps. Occupancy uses show start date; it counts booked seats over every configured ShowSeat row, including currently held seats in the denominator.</p>
+    <section aria-labelledby="summary-heading">
+      <h2 id="summary-heading">Summary</h2>
+      <div class="cards">
+        <div class="card"><strong>Gross captured</strong><br>₹{{ totals.gross_collected|floatformat:2 }}</div>
+        <div class="card"><strong>Refunded</strong><br>₹{{ totals.refunded_amount|floatformat:2 }}</div>
+        <div class="card"><strong>Net revenue</strong><br>₹{{ totals.net_revenue|floatformat:2 }}</div>
+        <div class="card"><strong>Confirmed bookings</strong><br>{{ totals.confirmed_bookings }}</div>
+        <div class="card"><strong>Confirmed tickets</strong><br>{{ totals.confirmed_tickets }}</div>
+        <div class="card"><strong>Paid, confirmed bookings</strong><br>{{ totals.paid_confirmed_bookings }}</div>
+        <div class="card"><strong>Cancellations in range</strong><br>{{ cancellations.count }} (₹{{ cancellations.value|default:0|floatformat:2 }})</div>
+        <div class="card"><strong>Refunds in range</strong><br>{{ refunds.count }} (₹{{ refunds.value|default:0|floatformat:2 }})</div>
+        <div class="card"><strong>Refunds pending</strong><br>{{ pending_refunds }}</div>
+        <div class="card"><strong>Registered users</strong><br>{{ user_stats.total }}</div>
+        <div class="card"><strong>New users in range</strong><br>{{ user_stats.new }}</div>
+        <div class="card"><strong>Repeat customers in range</strong><br>{{ user_stats.repeat_customers }}</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Revenue trends</h2>
+      {% for title, series in revenue_charts %}
+        <h3>{{ title }}</h3>
+        <div class="chart" role="img" aria-label="{{ title }} net revenue chart">
+          {% for item in series %}
+            <div class="bar-row">
+              <span class="bar-label">{{ item.label }}</span>
+              <span class="bar-track"><span class="bar" style="width: {{ item.bar_width }}%"></span></span>
+              <span class="bar-value">₹{{ item.value|floatformat:2 }}</span>
+            </div>
+          {% empty %}
+            <p class="note">No captured revenue in this period.</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </section>
+
+    <section>
+      <h2>Booking trends</h2>
+      <div class="chart" role="img" aria-label="Bookings by day">
+        {% for item in booking_trends %}
+          <div class="bar-row">
+            <span class="bar-label">{{ item.label }}</span>
+            <span class="bar-track"><span class="bar" style="width: {{ item.bar_width }}%"></span></span>
+            <span class="bar-value">{{ item.value }} bookings</span>
+          </div>
+        {% empty %}
+          <p class="note">No bookings in this period.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section>
+      <h2>Peak booking hours</h2>
+      <div class="chart" role="img" aria-label="Bookings by hour">
+        {% for item in peak_booking_hours %}
+          <div class="bar-row">
+            <span class="bar-label">{{ item.label }}</span>
+            <span class="bar-track"><span class="bar" style="width: {{ item.bar_width }}%"></span></span>
+            <span class="bar-value">{{ item.bookings }} bookings</span>
+          </div>
+        {% empty %}
+          <p class="note">No bookings in this period.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section>
+      <h2>Booking states</h2>
+      <div class="table-scroll"><table><thead><tr><th>State</th><th>Bookings</th></tr></thead><tbody>
+        {% for state, count in booking_states.items %}<tr><td>{{ state }}</td><td>{{ count }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+    <section>
+      <h2>Top movies by gross collected</h2>
+      <div class="table-scroll"><table><thead><tr><th>Movie</th><th>Gross</th><th>Paid bookings</th></tr></thead><tbody>
+        {% for item in movie_rankings %}<tr><td>{{ item.show__movie__title }}</td><td>{{ item.gross|floatformat:2 }}</td><td>{{ item.bookings }}</td></tr>
+        {% empty %}<tr><td colspan="3">No paid, confirmed bookings in this period.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+    <section>
+      <h2>Top theatres by gross collected</h2>
+      <div class="table-scroll"><table><thead><tr><th>Theatre</th><th>City</th><th>Gross</th><th>Paid bookings</th></tr></thead><tbody>
+        {% for item in theatre_rankings %}<tr><td>{{ item.show__screen__theatre__name }}</td><td>{{ item.show__screen__theatre__city }}</td><td>{{ item.gross|floatformat:2 }}</td><td>{{ item.bookings }}</td></tr>
+        {% empty %}<tr><td colspan="4">No paid, confirmed bookings in this period.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+    <section>
+      <h2>Theatre occupancy</h2>
+      <p class="note">Denominator is every ShowSeat row (available + held + booked); the schema has no separate blocked-seat state.</p>
+      <div class="table-scroll"><table><thead><tr><th>Theatre</th><th>City</th><th>Shows</th><th>Booked / sellable seats</th><th>Held</th><th>Occupancy</th></tr></thead><tbody>
+        {% for item in theatre_occupancy %}<tr><td>{{ item.screen__theatre__name }}</td><td>{{ item.screen__theatre__city }}</td><td>{{ item.shows }}</td><td>{{ item.booked_seats }} / {{ item.sellable_seats }}</td><td>{{ item.held_seats }}</td><td>{{ item.occupancy_percent|floatformat:1 }}%</td></tr>
+        {% empty %}<tr><td colspan="6">No shows in this period.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+
+    <section>
+      <h2>Show occupancy</h2>
+      <p class="note">Showing up to {{ show_occupancy_limit }} latest shows.</p>
+      <div class="table-scroll"><table><thead><tr><th>Show start</th><th>Movie</th><th>Theatre / screen</th><th>Booked / sellable seats</th><th>Held</th><th>Occupancy</th></tr></thead><tbody>
+        {% for item in show_occupancy %}<tr><td>{{ item.start_time|date:"Y-m-d H:i" }}</td><td>{{ item.movie__title }}</td><td>{{ item.screen__theatre__name }} / {{ item.screen__name }}</td><td>{{ item.booked_seats }} / {{ item.sellable_seats }}</td><td>{{ item.held_seats }}</td><td>{{ item.occupancy_percent|floatformat:1 }}%</td></tr>
+        {% empty %}<tr><td colspan="6">No shows in this period.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+  {% endif %}
+</body>
+</html>

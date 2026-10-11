@@ -17,6 +17,7 @@
     <div class="movie-detail-info">
       <div class="movie-detail-meta text-secondary small">{{ movie.certificate }} &middot; {{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.duration_minutes }} mins</div>
       <h1 id="movie-detail-title" class="movie-detail-title fw-bold font-display">{{ movie.title }}</h1>
+      <p class="text-warning small mb-2">★ {{ movie.rating|floatformat:1 }}/5 &middot; {{ review_count }} published review{{ review_count|pluralize }}</p>
       <p class="movie-detail-description text-secondary">{{ movie.description }}</p>
       <dl class="movie-detail-facts mb-0">
         <div>
@@ -38,6 +39,113 @@
       </dl>
     </div>
   </section>
+
+  {% if movie.trailer_embed_url %}
+    <section class="my-4" aria-labelledby="movie-trailer-heading">
+      <h2 id="movie-trailer-heading" class="h4 fw-bold mb-3">Official Trailer</h2>
+      <div class="ratio ratio-16x9">
+        <iframe
+          src="{{ movie.trailer_embed_url }}"
+          title="{{ movie.title }} official trailer"
+          loading="lazy"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen
+        ></iframe>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if poster_gallery %}
+    <section class="my-4" aria-label="More posters for {{ movie.title }}">
+      <div class="d-flex flex-wrap gap-3">
+        {% for poster in poster_gallery %}
+          <img src="{{ poster.image.url }}" alt="{{ poster.alt_text|default:movie.title }}" loading="lazy" decoding="async" width="160" height="240" class="rounded object-fit-cover">
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="my-5" aria-labelledby="movie-reviews-heading">
+    <h2 id="movie-reviews-heading" class="h4 fw-bold mb-3">Verified Viewer Reviews</h2>
+    {% if review_form %}
+      <form method="post" action="{% url 'movies:create_review' movie.slug %}" class="card bg-cinema-surface border-secondary border-opacity-25 p-3 mb-4">
+        {% csrf_token %}
+        <p class="small text-secondary">Only theater-checked-in attendees of a completed show can submit a review.</p>
+        {{ review_form.as_p }}
+        <button type="submit" class="btn btn-danger align-self-start">Submit Review</button>
+      </form>
+    {% elif user.is_authenticated %}
+      <p class="text-secondary small">Reviews are available after staff verifies your attendance at a completed show.</p>
+    {% else %}
+      <p class="text-secondary small"><a href="{% url 'users:login' %}?next={{ request.path|urlencode }}">Sign in</a> to review after your theater check-in.</p>
+    {% endif %}
+
+    <div class="d-flex flex-column gap-3">
+      {% for review in reviews %}
+        <article class="card bg-cinema-surface border-secondary border-opacity-25 p-3">
+          <div class="d-flex justify-content-between gap-3">
+            <div>
+              <h3 class="h6 fw-bold mb-1">{{ review.title }}</h3>
+              <div class="text-warning small">{{ review.rating }}/5
+                {% if review.is_verified_viewer %}<span class="badge text-bg-success ms-2">Verified Viewer</span>{% endif %}
+              </div>
+              <p class="text-secondary small mt-2 mb-1">{{ review.text|linebreaksbr }}</p>
+              <small class="text-secondary">{{ review.user.username }} &middot; {{ review.created_at|date:"d M Y" }}</small>
+            </div>
+            {% if user.is_authenticated and user.id == review.user_id %}
+              <details class="align-self-start">
+                <summary class="btn btn-outline-light btn-sm">Edit</summary>
+                <form method="post" action="{% url 'movies:edit_review' review.id %}" class="card bg-cinema-surface p-3 mt-2">
+                  {% csrf_token %}
+                  <label class="form-label" for="edit-booking-{{ review.id }}">Verified viewing</label>
+                  <select name="booking" id="edit-booking-{{ review.id }}" class="form-select mb-2" required>
+                    <option value="{{ review.booking_id }}">{{ review.booking.booking_reference }}</option>
+                  </select>
+                  <label class="form-label" for="edit-rating-{{ review.id }}">Rating</label>
+                  <select name="rating" id="edit-rating-{{ review.id }}" class="form-select mb-2" required>
+                    {% for value in "12345" %}<option value="{{ value }}" {% if review.rating|stringformat:"s" == value %}selected{% endif %}>{{ value }} / 5</option>{% endfor %}
+                  </select>
+                  <label class="form-label" for="edit-title-{{ review.id }}">Title</label>
+                  <input name="title" id="edit-title-{{ review.id }}" class="form-control mb-2" maxlength="120" value="{{ review.title }}" required>
+                  <label class="form-label" for="edit-text-{{ review.id }}">Review</label>
+                  <textarea name="text" id="edit-text-{{ review.id }}" class="form-control mb-2" rows="3" maxlength="3000" required>{{ review.text }}</textarea>
+                  <button type="submit" class="btn btn-danger btn-sm">Save Review</button>
+                </form>
+              </details>
+            {% elif user.is_authenticated %}
+              <form method="post" action="{% url 'movies:report_review' review.id %}" class="align-self-start">
+                {% csrf_token %}
+                <input type="hidden" name="reason" value="other">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Report</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% empty %}
+        <p class="text-secondary small">No published reviews yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if similar_movies %}
+    <section class="my-5" aria-labelledby="similar-movies-heading">
+      <h2 id="similar-movies-heading" class="h4 fw-bold mb-3">Similar Movies</h2>
+      <div class="movie-grid">
+        {% for similar in similar_movies %}
+          <article class="card movie-card bg-cinema-surface border-secondary border-opacity-25">
+            <a href="{{ similar.get_absolute_url }}" class="movie-poster-link" aria-label="View {{ similar.title }}">
+              <img class="movie-poster" src="{{ similar.display_poster_url }}" alt="{{ similar.title }} poster" loading="lazy">
+            </a>
+            <div class="card-body movie-details">
+              <h3 class="movie-title h6 fw-bold">{{ similar.title }}</h3>
+              <p class="text-secondary small">{{ similar.genre }} &middot; {{ similar.language }} &middot; {{ similar.rating|floatformat:1 }}/5</p>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 
   <section class="movie-theatres-section" aria-labelledby="movie-theatres-title">
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-2 mb-3">

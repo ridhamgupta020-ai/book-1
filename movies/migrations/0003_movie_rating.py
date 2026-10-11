@@ -17,10 +17,10 @@ class Migration(migrations.Migration):
                 decimal_places=1,
                 default=Decimal("0.0"),
                 help_text="Editorial rating from 0 to 10.",
-                max_digits=3,
+                max_digits=2,
                 validators=[
                     MinValueValidator(Decimal("0.0")),
-                    MaxValueValidator(Decimal("10.0")),
+                    MaxValueValidator(Decimal("5.0")),
                 ],
             ),
         ),

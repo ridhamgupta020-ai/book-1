@@ -13,11 +13,24 @@
             <div class="text-secondary small">
               {{ booking.show.screen.theatre.name }} &middot; {{ booking.show.start_time|date:"D, d M Y H:i" }} &middot; ₹{{ booking.total_amount }}
             </div>
+            <div class="text-secondary small">Payment status: {{ booking.get_payment_status_display }}</div>
+            {% for payment in booking.payment_attempts.all %}
+              <div class="text-secondary small">Payment {{ forloop.counter }}: {{ payment.gateway_order_id }} &middot; {{ payment.get_status_display }}{% if payment.gateway_payment_id %} ({{ payment.gateway_payment_id }}){% endif %}</div>
+            {% endfor %}
           </div>
           <div class="d-flex gap-2">
-            <a href="{% url 'bookings:ticket_detail' booking.booking_reference %}" class="btn btn-outline-light btn-sm px-3">View Ticket</a>
+            {% if booking.can_modify_seats %}
+              <a href="{% url 'bookings:seat_selection' booking.show_id %}?booking={{ booking.booking_reference|urlencode }}" class="btn btn-outline-light btn-sm px-3">Modify Seats</a>
+            {% endif %}
             {% if booking.status == "confirmed" and booking.payment_status == "paid" %}
+              <a href="{% url 'bookings:ticket_detail' booking.booking_reference %}" class="btn btn-outline-light btn-sm px-3">View Ticket</a>
               <a href="{% url 'bookings:ticket_download' booking.booking_reference %}" class="btn btn-danger btn-sm px-3">Download PDF</a>
+            {% endif %}
+            {% if booking.can_retry_payment %}
+              <form method="post" action="{% url 'bookings:retry_payment' booking.booking_reference %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-warning btn-sm px-3">Retry Payment</button>
+              </form>
             {% endif %}
             {% if booking.is_cancellable %}
               <form method="post" action="{% url 'bookings:cancel_booking' booking.booking_reference %}">

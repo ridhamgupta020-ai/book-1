@@ -50,19 +50,19 @@ class MovieAndShowTestCase(TestCase):
         self.assertContains(response, 'loading="lazy"')
 
     def test_movie_search_is_title_only_and_returns_live_count(self):
-        self.movie.cast = "Chronos"
+        self.movie.cast = "CastOnlyTerm"
         self.movie.save(update_fields=["cast"])
 
         count_response = self.client.get(
             reverse("movies:movie_list"),
-            {"q": "Chronos", "count_only": "1"},
+            {"q": "CastOnlyTerm", "count_only": "1"},
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(count_response.status_code, 200)
         self.assertEqual(count_response.json(), {"count": 0})
 
     def test_movie_filters_by_release_rating_theatre_and_showtime(self):
-        self.movie.rating = Decimal("8.5")
+        self.movie.rating = Decimal("4.5")
         self.movie.save(update_fields=["rating"])
         show_start = timezone.localtime(timezone.now()).replace(
             hour=19, minute=0, second=0, microsecond=0
@@ -80,7 +80,7 @@ class MovieAndShowTestCase(TestCase):
             {
                 "city": self.theatre.city,
                 "theatre": self.theatre.id,
-                "min_rating": "8.0",
+                "min_rating": "4.0",
                 "showtime": "evening",
                 "release_from": date.today().isoformat(),
             },

@@ -1,16 +1,29 @@
-import secrets
+import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import ValidationError
 from django.core import signing
-from django.http import HttpResponse
+from django.db.models import Prefetch
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from movies.models import Show
 from .forms import SeatSelectionForm
-from .models import Booking
+from .models import Booking, BookingSeat
 from .payments import PaymentGatewayService
 from .tickets import render_booking_ticket_pdf
+
+
+logger = logging.getLogger(__name__)
+ACTIVE_BOOKING_SEATS = Prefetch(
+    "booking_seats",
+    queryset=BookingSeat.objects.filter(is_active=True).select_related(
+        "show_seat__seat"
+    ),
+)
 
 
 @login_required
@@ -20,8 +33,35 @@ def seat_selection_view(request, show_id):
         pk=show_id,
         is_active=True,
     )
+    expired_booking_ids = Booking.objects.filter(
+        show=show,
+        status=Booking.Status.PENDING_PAYMENT,
+        expires_at__lte=timezone.now(),
+    ).values_list("id", flat=True)
+    for booking_id in expired_booking_ids:
+        PaymentGatewayService.reconcile_expired_booking(booking_id)
     show.initialize_show_seats()
+    booking_reference = request.GET.get("booking", "").strip()
+    booking = None
+    if booking_reference:
+        booking = get_object_or_404(
+            Booking.objects.select_related("show"),
+            booking_reference=booking_reference,
+            user=request.user,
+            show=show,
+            status=Booking.Status.PENDING_PAYMENT,
+        )
+        if not booking.expires_at or booking.expires_at <= timezone.now():
+            messages.error(request, "This seat reservation has expired.")
+            return redirect("bookings:seat_selection", show_id=show.pk)
     show_seats = show.show_seats.select_related("seat").all()
+    selected_seat_ids = set()
+    if booking:
+        selected_seat_ids = set(
+            booking.booking_seats.filter(is_active=True).values_list(
+                "show_seat_id", flat=True
+            )
+        )
 
     rows = {}
     for ss in show_seats:
@@ -31,11 +71,14 @@ def seat_selection_view(request, show_id):
         form = SeatSelectionForm(request.POST)
         if form.is_valid():
             try:
-                booking = Booking.create_pending_booking(
-                    user=request.user,
-                    show=show,
-                    show_seat_ids=form.cleaned_data["seat_ids"],
-                )
+                if booking:
+                    booking.update_pending_seats(form.cleaned_data["seat_ids"])
+                else:
+                    booking = Booking.create_pending_booking(
+                        user=request.user,
+                        show=show,
+                        show_seat_ids=form.cleaned_data["seat_ids"],
+                    )
                 return redirect(
                     "bookings:checkout", booking_reference=booking.booking_reference
                 )
@@ -50,16 +93,68 @@ def seat_selection_view(request, show_id):
         {
             "show": show,
             "rows": rows,
+            "booking": booking,
+            "selected_seat_ids": selected_seat_ids,
         },
     )
 
 
+@require_GET
+def seat_availability_view(request, show_id):
+    show = get_object_or_404(Show, pk=show_id, is_active=True)
+    booking_reference = request.GET.get("booking", "").strip()
+    booking = None
+    if booking_reference and request.user.is_authenticated:
+        booking = get_object_or_404(
+            Booking,
+            booking_reference=booking_reference,
+            user=request.user,
+            show=show,
+            status=Booking.Status.PENDING_PAYMENT,
+        )
+    booking_seat_ids = set()
+    if booking:
+        booking_seat_ids = set(
+            booking.booking_seats.filter(is_active=True).values_list(
+                "show_seat_id", flat=True
+            )
+        )
+    expired_booking_ids = Booking.objects.filter(
+        show=show,
+        status=Booking.Status.PENDING_PAYMENT,
+        expires_at__lte=timezone.now(),
+    ).values_list("id", flat=True)
+    for booking_id in expired_booking_ids:
+        PaymentGatewayService.reconcile_expired_booking(booking_id)
+    show_seats = (
+        show.show_seats.select_related("seat")
+        .order_by("seat__row_label", "seat__seat_number")
+    )
+    return JsonResponse(
+        {
+            "seats": [
+                {
+                    "id": seat.pk,
+                    "label": seat.seat.label,
+                    "status": seat.status,
+                    "price": str(seat.effective_price),
+                    "held_by_current_booking": seat.pk in booking_seat_ids
+                    and seat.held_by_id == request.user.id,
+                }
+                for seat in show_seats
+            ],
+            "server_time": timezone.now().isoformat(),
+        }
+    )
+
+
 @login_required
+@require_http_methods(["GET", "POST"])
 def checkout_view(request, booking_reference):
     booking = get_object_or_404(
         Booking.objects.select_related(
             "show", "show__movie", "show__screen", "show__screen__theatre"
-        ).prefetch_related("booking_seats__show_seat__seat"),
+        ).prefetch_related(ACTIVE_BOOKING_SEATS),
         booking_reference=booking_reference,
         user=request.user,
     )
@@ -68,24 +163,47 @@ def checkout_view(request, booking_reference):
             "bookings:ticket_detail", booking_reference=booking.booking_reference
         )
 
-    payment_order = PaymentGatewayService.create_payment_order(booking)
-    demo_txn_id = f"TXN-{secrets.token_hex(5).upper()}"
-    demo_signature = PaymentGatewayService.generate_gateway_signature(
-        order_id=payment_order["order_id"],
-        transaction_id=demo_txn_id,
-        amount=payment_order["amount"],
-    )
+    if (
+        booking.status != Booking.Status.PENDING_PAYMENT
+        or not booking.expires_at
+        or booking.expires_at <= timezone.now()
+    ):
+        messages.error(request, "This booking is no longer available for payment.")
+        return redirect("bookings:my_bookings")
+
+    if request.method == "POST":
+        try:
+            payment_order = PaymentGatewayService.create_payment_order(booking)
+        except ValidationError as exc:
+            return JsonResponse({"error": "; ".join(exc.messages)}, status=400)
+        except ImproperlyConfigured:
+            logger.exception("Razorpay is not configured for checkout.")
+            return JsonResponse(
+                {"error": "Online payments are temporarily unavailable."},
+                status=503,
+            )
+        return JsonResponse(payment_order)
 
     return render(
         request,
         "bookings/checkout.html",
         {
             "booking": booking,
-            "payment_order": payment_order,
-            "demo_txn_id": demo_txn_id,
-            "demo_signature": demo_signature,
+            "can_modify_seats": not booking.payment_attempts.exists(),
         },
     )
+
+
+@login_required
+@require_POST
+def retry_payment_view(request, booking_reference):
+    booking = get_object_or_404(
+        Booking, booking_reference=booking_reference, user=request.user
+    )
+    if not booking.can_retry_payment:
+        messages.error(request, "This payment is not currently eligible for retry.")
+        return redirect("bookings:my_bookings")
+    return redirect("bookings:checkout", booking_reference=booking.booking_reference)
 
 
 @login_required
@@ -94,9 +212,9 @@ def verify_payment_callback_view(request, booking_reference):
     booking = get_object_or_404(
         Booking, booking_reference=booking_reference, user=request.user
     )
-    order_id = request.POST.get("order_id", "").strip()
-    transaction_id = request.POST.get("transaction_id", "").strip()
-    signature = request.POST.get("signature", "").strip()
+    order_id = request.POST.get("razorpay_order_id", "").strip()
+    transaction_id = request.POST.get("razorpay_payment_id", "").strip()
+    signature = request.POST.get("razorpay_signature", "").strip()
 
     try:
         PaymentGatewayService.verify_and_confirm_payment(
@@ -105,10 +223,18 @@ def verify_payment_callback_view(request, booking_reference):
             transaction_id=transaction_id,
             signature=signature,
         )
-        messages.success(
-            request,
-            f"Booking {booking.booking_reference} confirmed! Your e-ticket is ready.",
-        )
+        booking.refresh_from_db()
+        if booking.status == Booking.Status.CONFIRMED:
+            messages.success(
+                request,
+                f"Booking {booking.booking_reference} confirmed! Your e-ticket is ready.",
+            )
+        else:
+            messages.warning(
+                request,
+                "Payment was received after the seat reservation expired. "
+                "A refund is being processed automatically.",
+            )
         return redirect(
             "bookings:ticket_detail", booking_reference=booking.booking_reference
         )
@@ -119,14 +245,36 @@ def verify_payment_callback_view(request, booking_reference):
         )
 
 
+@csrf_exempt
+@require_POST
+def razorpay_webhook_view(request):
+    try:
+        processed = PaymentGatewayService.handle_webhook(
+            body=request.body,
+            signature=request.headers.get("X-Razorpay-Signature", ""),
+            event_id=request.headers.get("X-Razorpay-Event-Id", ""),
+        )
+    except ValidationError as exc:
+        return JsonResponse({"error": "; ".join(exc.messages)}, status=400)
+    except ImproperlyConfigured:
+        logger.exception("Razorpay webhook secret is not configured.")
+        return JsonResponse({"error": "Webhook processing unavailable."}, status=503)
+    except Exception:
+        logger.exception("Razorpay webhook processing failed.")
+        return JsonResponse({"error": "Webhook processing failed."}, status=500)
+    return JsonResponse({"received": True, "processed": processed})
+
+
 @login_required
 def ticket_detail_view(request, booking_reference):
     booking = get_object_or_404(
         Booking.objects.select_related(
             "show", "show__movie", "show__screen", "show__screen__theatre"
-        ).prefetch_related("booking_seats__show_seat__seat"),
+        ).prefetch_related(ACTIVE_BOOKING_SEATS),
         booking_reference=booking_reference,
         user=request.user,
+        status=Booking.Status.CONFIRMED,
+        payment_status=Booking.PaymentStatus.PAID,
     )
     qr_data_uri = booking.generate_qr_code_data_uri()
     return render(
@@ -144,7 +292,7 @@ def ticket_download_view(request, booking_reference):
     booking = get_object_or_404(
         Booking.objects.select_related(
             "show__movie", "show__screen", "show__screen__theatre"
-        ).prefetch_related("booking_seats__show_seat__seat"),
+        ).prefetch_related(ACTIVE_BOOKING_SEATS),
         booking_reference=booking_reference,
         user=request.user,
         status=Booking.Status.CONFIRMED,
@@ -175,7 +323,7 @@ def verify_ticket_view(request):
         Booking.objects.select_related(
             "show__movie", "show__screen", "show__screen__theatre"
         )
-        .prefetch_related("booking_seats__show_seat__seat")
+        .prefetch_related(ACTIVE_BOOKING_SEATS)
         .filter(
             pk=payload.get("booking_id"),
             payment_transaction_id=payload.get("payment_reference"),
@@ -199,7 +347,11 @@ def my_bookings_view(request):
         .select_related(
             "show", "show__movie", "show__screen", "show__screen__theatre"
         )
-        .prefetch_related("booking_seats__show_seat__seat")
+        .prefetch_related(
+            "booking_seats__show_seat__seat",
+            "payment_attempts",
+            "payment_transactions",
+        )
     )
     return render(request, "bookings/my_bookings.html", {"bookings": bookings})
 

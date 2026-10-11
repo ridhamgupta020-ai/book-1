@@ -9,6 +9,7 @@ admin.site.site_title = "MyBookShow Admin Portal"
 admin.site.index_title = "Cinema, Showtime & Reservation Management"
 
 urlpatterns = [
+    path("admin/analytics/", include("analytics.urls", namespace="analytics")),
     path("admin/", admin.site.urls),
     path("users/", include("users.urls", namespace="users")),
     path("bookings/", include("bookings.urls", namespace="bookings")),

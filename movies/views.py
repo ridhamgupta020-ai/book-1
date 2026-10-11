@@ -1,17 +1,21 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db import OperationalError, ProgrammingError
-from django.db.models import Count, F, Min, Q
+from django.db import IntegrityError, OperationalError, ProgrammingError
+from django.db.models import Case, Count, F, IntegerField, Min, Q, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from bookmyseat.bootstrap import ensure_database_ready
 from bookings.models import Booking
-from .forms import MovieFilterForm
-from .models import Movie, Show, Theatre
+from .forms import MovieFilterForm, ReviewForm, ReviewReportForm
+from .models import Movie, Review, ReviewReport, Show, Theatre
 
 
 def home_view(request):
+    recent_cutoff = timezone.now() - timedelta(days=30)
     try:
         featured_movies = list(
             Movie.objects.filter(is_featured=True, status=Movie.Status.NOW_SHOWING)[:4]
@@ -19,6 +23,20 @@ def home_view(request):
         now_showing = list(Movie.objects.filter(status=Movie.Status.NOW_SHOWING)[:8])
         coming_soon = list(Movie.objects.filter(status=Movie.Status.COMING_SOON)[:4])
         theatres = list(Theatre.objects.filter(is_active=True)[:6])
+        trending_movies = list(
+            Movie.objects.exclude(status=Movie.Status.ARCHIVED)
+            .annotate(
+                recent_bookings=Count(
+                    "shows__bookings",
+                    filter=Q(
+                        shows__bookings__status=Booking.Status.CONFIRMED,
+                        shows__bookings__created_at__gte=recent_cutoff,
+                    ),
+                    distinct=True,
+                )
+            )
+            .order_by("-recent_bookings", "-rating", "-release_date")[:4]
+        )
     except (OperationalError, ProgrammingError):
         ensure_database_ready()
         featured_movies = list(
@@ -27,6 +45,20 @@ def home_view(request):
         now_showing = list(Movie.objects.filter(status=Movie.Status.NOW_SHOWING)[:8])
         coming_soon = list(Movie.objects.filter(status=Movie.Status.COMING_SOON)[:4])
         theatres = list(Theatre.objects.filter(is_active=True)[:6])
+        trending_movies = list(
+            Movie.objects.exclude(status=Movie.Status.ARCHIVED)
+            .annotate(
+                recent_bookings=Count(
+                    "shows__bookings",
+                    filter=Q(
+                        shows__bookings__status=Booking.Status.CONFIRMED,
+                        shows__bookings__created_at__gte=recent_cutoff,
+                    ),
+                    distinct=True,
+                )
+            )
+            .order_by("-recent_bookings", "-rating", "-release_date")[:4]
+        )
 
     return render(
         request,
@@ -36,6 +68,10 @@ def home_view(request):
             "now_showing": now_showing,
             "coming_soon": coming_soon,
             "theatres": theatres,
+            "trending_movies": trending_movies,
+            "top_rated_movies": Movie.objects.exclude(
+                status=Movie.Status.ARCHIVED
+            ).order_by("-rating", "-release_date")[:4],
         },
     )
 
@@ -198,7 +234,7 @@ def movie_list_view(request):
 
 
 def movie_detail_view(request, slug):
-    movie = get_object_or_404(Movie, slug=slug)
+    movie = get_object_or_404(Movie.objects.prefetch_related("posters"), slug=slug)
     recent_movie_ids = request.session.get("recently_viewed_movies", [])
     recent_movie_ids = [movie_id for movie_id in recent_movie_ids if movie_id != movie.id]
     request.session["recently_viewed_movies"] = [movie.id, *recent_movie_ids[:9]]
@@ -235,6 +271,60 @@ def movie_detail_view(request, slug):
         .values_list("city", flat=True)
         .distinct()
     )
+    review_queryset = movie.reviews.filter(
+        moderation_status=Review.ModerationStatus.PUBLISHED
+    ).select_related("user", "booking")
+    review_form = None
+    eligible_bookings = Booking.objects.none()
+    if request.user.is_authenticated:
+        eligible_bookings = Booking.objects.filter(
+            user=request.user,
+            show__movie=movie,
+            status=Booking.Status.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+            checked_in_at__isnull=False,
+            show__end_time__lt=timezone.now(),
+        ).exclude(movie_reviews__isnull=False)
+        if eligible_bookings.exists():
+            review_form = ReviewForm(request.user, movie)
+
+    movie_year = movie.release_date.year
+    similar_movies = (
+        Movie.objects.exclude(pk=movie.pk)
+        .exclude(status=Movie.Status.ARCHIVED)
+        .filter(Q(genre=movie.genre) | Q(language=movie.language))
+        .annotate(
+            similarity_score=(
+                Case(
+                    When(genre=movie.genre, then=Value(3)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+                + Case(
+                    When(language=movie.language, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+                + Case(
+                    When(
+                        Q(
+                            release_date__year__gte=movie_year - 3,
+                            release_date__year__lte=movie_year + 3,
+                        ),
+                        then=Value(1),
+                    ),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            ),
+            popularity=Count(
+                "shows__bookings",
+                filter=Q(shows__bookings__status=Booking.Status.CONFIRMED),
+                distinct=True,
+            ),
+        )
+        .order_by("-similarity_score", "-popularity", "-rating")[:4]
+    )
 
     return render(
         request,
@@ -245,8 +335,79 @@ def movie_detail_view(request, slug):
             "cities": sorted(set(cities)),
             "selected_city": selected_city,
             "selected_date": selected_date_str or "",
+            "reviews": review_queryset,
+            "review_count": review_queryset.count(),
+            "poster_gallery": list(movie.posters.all()),
+            "review_form": review_form,
+            "eligible_bookings": eligible_bookings,
+            "similar_movies": similar_movies,
         },
     )
+
+
+@login_required
+@require_POST
+def create_review_view(request, slug):
+    movie = get_object_or_404(Movie, slug=slug)
+    form = ReviewForm(request.user, movie, request.POST)
+    if form.is_valid():
+        review = form.save(commit=False)
+        try:
+            review.save()
+        except IntegrityError:
+            messages.error(request, "You have already reviewed this viewing.")
+        else:
+            messages.success(
+                request,
+                "Your review was submitted and will appear after moderation.",
+            )
+    else:
+        messages.error(request, "A completed, staff-verified viewing is required to review.")
+    return redirect(movie.get_absolute_url())
+
+
+@login_required
+@require_POST
+def edit_review_view(request, review_id):
+    review = get_object_or_404(Review, pk=review_id, user=request.user)
+    form = ReviewForm(
+        request.user, review.movie, request.POST, instance=review
+    )
+    if form.is_valid():
+        try:
+            updated_review = form.save(commit=False)
+            updated_review.moderation_status = Review.ModerationStatus.PENDING
+            updated_review.save()
+        except IntegrityError:
+            messages.error(request, "This viewing already has a review.")
+        else:
+            messages.success(request, "Your updated review is awaiting moderation.")
+    else:
+        messages.error(request, "Please correct the review before saving.")
+    return redirect(review.movie.get_absolute_url())
+
+
+@login_required
+@require_POST
+def report_review_view(request, review_id):
+    review = get_object_or_404(Review, pk=review_id)
+    if review.user_id == request.user.id:
+        messages.error(request, "You cannot report your own review.")
+        return redirect(review.movie.get_absolute_url())
+    form = ReviewReportForm(request.POST)
+    if form.is_valid():
+        report = form.save(commit=False)
+        report.review = review
+        report.reporter = request.user
+        try:
+            report.save()
+        except IntegrityError:
+            messages.info(request, "You have already reported this review.")
+        else:
+            messages.success(request, "The review was reported for moderation.")
+    else:
+        messages.error(request, "Please select a valid report reason.")
+    return redirect(review.movie.get_absolute_url())
 
 
 def theatre_list_view(request):

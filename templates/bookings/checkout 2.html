@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Checkout {{ booking.booking_reference }} | MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5" style="max-width: 720px;">
+  <div class="card bg-cinema-surface border-secondary border-opacity-25 p-4">
+    <div class="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-25 pb-3 mb-3">
+      <div>
+        <span class="text-danger small fw-semibold">Development Sandbox Payment Verification</span>
+        <h1 class="h4 fw-bold mb-0">Review &amp; Confirm Booking</h1>
+      </div>
+      <span class="font-mono text-secondary">{{ booking.booking_reference }}</span>
+    </div>
+
+    <div class="mb-3">
+      <div class="fw-bold fs-5">{{ booking.show.movie.title }}</div>
+      <div class="text-secondary small">{{ booking.show.screen.theatre.name }} &middot; {{ booking.show.screen.name }}</div>
+      <div class="text-secondary small">{{ booking.show.start_time|date:"D, d M Y H:i" }}</div>
+    </div>
+
+    <div class="border-top border-bottom border-secondary border-opacity-25 py-3 mb-3 font-mono small">
+      <div class="d-flex justify-content-between mb-1">
+        <span>Tickets Subtotal</span>
+        <span>₹{{ booking.subtotal_amount }}</span>
+      </div>
+      <div class="d-flex justify-content-between mb-1 text-secondary">
+        <span>Convenience Fee (8%)</span>
+        <span>₹{{ booking.convenience_fee }}</span>
+      </div>
+      <div class="d-flex justify-content-between fw-bold fs-6 mt-2">
+        <span>Total Payable</span>
+        <span>₹{{ booking.total_amount }}</span>
+      </div>
+    </div>
+
+    <div class="alert alert-warning small">
+      <strong>Demo Payment Notice:</strong> No live payment gateway credentials are configured. This form uses server-side HMAC-SHA256 signature verification to simulate an idempotent gateway callback without collecting raw card numbers or CVV values.
+    </div>
+
+    <form method="post" action="{% url 'bookings:payment_callback' booking.booking_reference %}">
+      {% csrf_token %}
+      <input type="hidden" name="order_id" value="{{ payment_order.order_id }}" />
+      <input type="hidden" name="transaction_id" value="{{ demo_txn_id }}" />
+      <input type="hidden" name="signature" value="{{ demo_signature }}" />
+      <button type="submit" class="btn btn-danger w-100 py-2 fw-semibold">
+        Authorize Demo Payment (₹{{ booking.total_amount }})
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

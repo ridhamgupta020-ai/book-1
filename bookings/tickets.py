@@ -59,7 +59,10 @@ def render_booking_ticket_pdf(booking) -> bytes:
         return Paragraph(f"<b>{escape(text)}</b>", styles["TicketValue"])
 
     seats = ", ".join(
-        entry.show_seat.seat.label for entry in booking.booking_seats.all()
+        entry.show_seat.seat.label
+        for entry in booking.booking_seats.filter(is_active=True).select_related(
+            "show_seat__seat"
+        )
     )
     showtime = timezone.localtime(booking.show.start_time).strftime("%A, %d %B %Y at %I:%M %p")
     details = [

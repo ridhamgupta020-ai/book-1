@@ -5,8 +5,8 @@
   <div class="card bg-cinema-surface border-secondary border-opacity-25 p-4">
     <div class="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-25 pb-3 mb-3">
       <div>
-        <span class="text-danger small fw-semibold">Development Sandbox Payment Verification</span>
-        <h1 class="h4 fw-bold mb-0">Review &amp; Confirm Booking</h1>
+        <span class="text-danger small fw-semibold">Secure Razorpay Checkout</span>
+        <h1 class="h4 fw-bold mb-0">Review Your Booking</h1>
       </div>
       <span class="font-mono text-secondary">{{ booking.booking_reference }}</span>
     </div>
@@ -15,6 +15,11 @@
       <div class="fw-bold fs-5">{{ booking.show.movie.title }}</div>
       <div class="text-secondary small">{{ booking.show.screen.theatre.name }} &middot; {{ booking.show.screen.name }}</div>
       <div class="text-secondary small">{{ booking.show.start_time|date:"D, d M Y H:i" }}</div>
+      <div class="text-secondary small">Seats: {% for entry in booking.booking_seats.all %}{{ entry.show_seat.seat.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+      {% if can_modify_seats %}
+        <a class="btn btn-outline-light btn-sm mt-2" href="{% url 'bookings:seat_selection' booking.show_id %}?booking={{ booking.booking_reference|urlencode }}">Modify selected seats</a>
+      {% endif %}
+      <div class="text-warning small mt-2">Seats are held for <span id="reservation-countdown" data-expires="{{ booking.expires_at|date:'U' }}">02:00</span>. Complete payment before the reservation expires.</div>
     </div>
 
     <div class="border-top border-bottom border-secondary border-opacity-25 py-3 mb-3 font-mono small">
@@ -32,19 +37,97 @@
       </div>
     </div>
 
-    <div class="alert alert-warning small">
-      <strong>Demo Payment Notice:</strong> No live payment gateway credentials are configured. This form uses server-side HMAC-SHA256 signature verification to simulate an idempotent gateway callback without collecting raw card numbers or CVV values.
-    </div>
-
-    <form method="post" action="{% url 'bookings:payment_callback' booking.booking_reference %}">
+    <div id="payment-error" class="alert alert-danger d-none" role="alert"></div>
+    <form id="payment-confirmation" method="post" action="{% url 'bookings:payment_callback' booking.booking_reference %}">
       {% csrf_token %}
-      <input type="hidden" name="order_id" value="{{ payment_order.order_id }}" />
-      <input type="hidden" name="transaction_id" value="{{ demo_txn_id }}" />
-      <input type="hidden" name="signature" value="{{ demo_signature }}" />
-      <button type="submit" class="btn btn-danger w-100 py-2 fw-semibold">
-        Authorize Demo Payment (₹{{ booking.total_amount }})
+      <input type="hidden" name="razorpay_order_id" value="" />
+      <input type="hidden" name="razorpay_payment_id" value="" />
+      <input type="hidden" name="razorpay_signature" value="" />
+      <button type="button" id="pay-button" class="btn btn-danger w-100 py-2 fw-semibold">
+        Pay ₹{{ booking.total_amount }}
       </button>
     </form>
   </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+  (() => {
+    const button = document.getElementById("pay-button");
+    const form = document.getElementById("payment-confirmation");
+    const error = document.getElementById("payment-error");
+    const countdown = document.getElementById("reservation-countdown");
+    const expiresAt = Number(countdown.dataset.expires) * 1000;
+    const csrfToken = form.querySelector("[name=csrfmiddlewaretoken]").value;
+    const refreshCountdown = () => {
+      const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+      countdown.textContent = `${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(remaining % 60).padStart(2, "0")}`;
+      if (remaining === 0) {
+        button.disabled = true;
+        error.textContent = "Your seat reservation expired. Return to showtimes to select seats again.";
+        error.classList.remove("d-none");
+      }
+    };
+    refreshCountdown();
+    window.setInterval(refreshCountdown, 1000);
+    button.addEventListener("click", async () => {
+      error.classList.add("d-none");
+      button.disabled = true;
+      if (!window.Razorpay) {
+        error.textContent = "Secure checkout could not be loaded. Please refresh and try again.";
+        error.classList.remove("d-none");
+        button.disabled = false;
+        return;
+      }
+      try {
+        const response = await fetch(window.checkoutOrderUrl, {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          credentials: "same-origin"
+        });
+        const order = await response.json();
+        if (!response.ok) throw new Error(order.error || "Unable to start payment.");
+        const options = {
+          key: order.key_id,
+          amount: String(order.amount_paise),
+          currency: order.currency,
+          name: "MyBookShow",
+          description: "{{ booking.show.movie.title|escapejs }}",
+          order_id: order.order_id,
+          prefill: {
+            name: "{{ request.user.get_full_name|escapejs }}",
+            email: "{{ request.user.email|escapejs }}"
+          },
+          theme: { color: "#e11d48" },
+          handler: (payment) => {
+            form.elements.razorpay_order_id.value = payment.razorpay_order_id;
+            form.elements.razorpay_payment_id.value = payment.razorpay_payment_id;
+            form.elements.razorpay_signature.value = payment.razorpay_signature;
+            button.textContent = "Verifying payment…";
+            form.submit();
+          },
+          modal: { ondismiss: () => { button.disabled = false; } }
+        };
+        const checkout = new window.Razorpay(options);
+      checkout.on("payment.failed", (event) => {
+        error.textContent = event.error.description || "Payment was not completed. You can retry while your seats remain reserved.";
+        error.classList.remove("d-none");
+        button.disabled = false;
+      });
+      checkout.open();
+      } catch (exception) {
+        error.textContent = exception instanceof Error ? exception.message : "Unable to start payment.";
+        error.classList.remove("d-none");
+        button.disabled = false;
+      }
+    });
+  })();
+</script>
+<script>
+  window.checkoutOrderUrl = "{% url 'bookings:checkout' booking.booking_reference %}";
+</script>
 {% endblock %}

@@ -1,5 +1,20 @@
 from django.contrib import admin
-from .models import Movie, Screen, Seat, Show, ShowSeat, Theatre
+from .models import (
+    Movie,
+    MoviePoster,
+    Review,
+    ReviewReport,
+    Screen,
+    Seat,
+    Show,
+    ShowSeat,
+    Theatre,
+)
+
+
+class MoviePosterInline(admin.TabularInline):
+    model = MoviePoster
+    extra = 1
 
 
 @admin.register(Movie)
@@ -17,8 +32,34 @@ class MovieAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "genre", "language", "certificate", "is_featured")
     search_fields = ("title", "director", "cast")
+    readonly_fields = ("rating", "created_at")
     prepopulated_fields = {"slug": ("title",)}
     ordering = ("-release_date",)
+    inlines = [MoviePosterInline]
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "movie",
+        "user",
+        "rating",
+        "moderation_status",
+        "created_at",
+    )
+    list_filter = ("moderation_status", "rating", "created_at")
+    search_fields = ("movie__title", "user__username", "title", "text")
+    readonly_fields = ("movie", "user", "booking", "created_at", "updated_at")
+    list_editable = ("moderation_status",)
+
+
+@admin.register(ReviewReport)
+class ReviewReportAdmin(admin.ModelAdmin):
+    list_display = ("review", "reporter", "reason", "status", "created_at")
+    list_filter = ("status", "reason", "created_at")
+    search_fields = ("review__movie__title", "reporter__username", "explanation")
+    readonly_fields = ("review", "reporter", "reason", "explanation", "created_at")
+    list_editable = ("status",)
 
 
 @admin.register(Theatre)

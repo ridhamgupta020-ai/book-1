@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     "users",
     "movies",
     "bookings",
+    "analytics.apps.AnalyticsConfig",
 ]
 
 MIDDLEWARE = [
@@ -222,6 +223,12 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_RESULT_SERIALIZER = "json"
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-expired-seat-reservations": {
+        "task": "bookings.tasks.cleanup_expired_reservations",
+        "schedule": 30.0,
+    },
+}
 
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
@@ -237,6 +244,9 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").strip().lower() in {
 }
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "tickets@mybookshow.com")
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8000").rstrip("/")
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
 # Safe structured logging that never prints credentials or DATABASE_URL
 LOGGING = {

@@ -54,4 +54,46 @@
     </div>
   </div>
 </section>
+
+<section class="home-movies-section py-4">
+  <div class="container">
+    <h2 class="h3 fw-bold font-display mb-3">Trending Movies</h2>
+    <div class="movie-grid">
+      {% for movie in trending_movies %}
+        <article class="card movie-card bg-cinema-surface border-secondary border-opacity-25">
+          <a href="{{ movie.get_absolute_url }}" class="movie-poster-link" aria-label="View {{ movie.title }}">
+            <img class="movie-poster" src="{{ movie.display_poster_url }}" alt="{{ movie.title }} poster" loading="lazy">
+          </a>
+          <div class="card-body movie-details">
+            <h3 class="movie-title h6 fw-bold">{{ movie.title }}</h3>
+            <p class="text-secondary small">{{ movie.genre }} &middot; {{ movie.rating|floatformat:1 }}/5</p>
+          </div>
+        </article>
+      {% empty %}
+        <p class="text-secondary mb-0">No trending movies yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="home-movies-section py-4">
+  <div class="container">
+    <h2 class="h3 fw-bold font-display mb-3">Top Rated</h2>
+    <div class="movie-grid">
+      {% for movie in top_rated_movies %}
+        <article class="card movie-card bg-cinema-surface border-secondary border-opacity-25">
+          <a href="{{ movie.get_absolute_url }}" class="movie-poster-link" aria-label="View {{ movie.title }}">
+            <img class="movie-poster" src="{{ movie.display_poster_url }}" alt="{{ movie.title }} poster" loading="lazy">
+          </a>
+          <div class="card-body movie-details">
+            <h3 class="movie-title h6 fw-bold">{{ movie.title }}</h3>
+            <p class="text-secondary small">{{ movie.rating|floatformat:1 }}/5</p>
+          </div>
+        </article>
+      {% empty %}
+        <p class="text-secondary mb-0">No rated movies yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
 {% endblock %}

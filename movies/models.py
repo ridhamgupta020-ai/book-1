@@ -1,4 +1,8 @@
 from decimal import Decimal
+import re
+import uuid
+from urllib.parse import parse_qs, urlparse
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import (
     FileExtensionValidator,
@@ -12,12 +16,35 @@ from django.utils.text import slugify
 
 
 DEFAULT_POSTER_PATH = "images/poster_chronos_horizon_1791521096648.jpg"
+YOUTUBE_VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 def validate_poster_size(file_obj):
     max_bytes = 5 * 1024 * 1024
     if file_obj and file_obj.size > max_bytes:
         raise ValidationError("Poster file size must not exceed 5 MB.")
+
+
+def validate_youtube_trailer_url(value):
+    if not value:
+        return
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    video_id = ""
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtube-nocookie.com"}:
+        if parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        elif parsed.path.startswith(("/embed/", "/shorts/")):
+            video_id = parsed.path.split("/")[2]
+    elif host == "youtu.be":
+        video_id = parsed.path.strip("/").split("/")[0]
+    if parsed.scheme != "https" or not YOUTUBE_VIDEO_ID_PATTERN.fullmatch(video_id):
+        raise ValidationError("Enter a valid HTTPS YouTube trailer URL.")
+
+
+def movie_poster_upload_path(instance, filename):
+    extension = filename.rsplit(".", 1)[-1].lower()
+    return f"movie-posters/{uuid.uuid4().hex}.{extension}"
 
 
 class Movie(models.Model):
@@ -50,14 +77,17 @@ class Movie(models.Model):
     duration_minutes = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     release_date = models.DateField(db_index=True)
     rating = models.DecimalField(
-        max_digits=3,
+        max_digits=2,
         decimal_places=1,
         default=Decimal("0.0"),
         validators=[
             MinValueValidator(Decimal("0.0")),
-            MaxValueValidator(Decimal("10.0")),
+            MaxValueValidator(Decimal("5.0")),
         ],
-        help_text="Editorial rating from 0 to 10.",
+        help_text="Average of published verified reviews, from 0 to 5.",
+    )
+    trailer_url = models.URLField(
+        blank=True, default="", validators=[validate_youtube_trailer_url]
     )
     certificate = models.CharField(
         max_length=8, choices=Certificate.choices, default=Certificate.UA
@@ -92,6 +122,24 @@ class Movie(models.Model):
         if self.poster:
             return self.poster.url
         return self.poster_url or static(DEFAULT_POSTER_PATH)
+
+    @property
+    def trailer_embed_url(self):
+        if not self.trailer_url:
+            return ""
+        parsed = urlparse(self.trailer_url)
+        host = (parsed.hostname or "").lower()
+        if host == "youtu.be":
+            video_id = parsed.path.strip("/").split("/")[0]
+        elif parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        elif parsed.path.startswith(("/embed/", "/shorts/")):
+            video_id = parsed.path.split("/")[2]
+        else:
+            return ""
+        if not YOUTUBE_VIDEO_ID_PATTERN.fullmatch(video_id):
+            return ""
+        return f"https://www.youtube-nocookie.com/embed/{video_id}"
 
     def __str__(self):
         return f"{self.title} ({self.language})"
@@ -263,3 +311,157 @@ class ShowSeat(models.Model):
 
     def __str__(self):
         return f"{self.show_id}:{self.seat.label} [{self.status}]"
+
+
+class MoviePoster(models.Model):
+    movie = models.ForeignKey(
+        Movie, on_delete=models.CASCADE, related_name="posters"
+    )
+    image = models.ImageField(
+        upload_to=movie_poster_upload_path,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "webp"]),
+            validate_poster_size,
+        ],
+    )
+    alt_text = models.CharField(max_length=200, blank=True, default="")
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-is_primary", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["movie"],
+                condition=models.Q(is_primary=True),
+                name="one_primary_poster_per_movie",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.image:
+            try:
+                from PIL import Image
+
+                image = Image.open(self.image)
+                image.verify()
+            except (OSError, ValueError) as exc:
+                raise ValidationError({"image": "Upload a valid image file."}) from exc
+
+
+class Review(models.Model):
+    class ModerationStatus(models.TextChoices):
+        PENDING = "pending", "Pending moderation"
+        PUBLISHED = "published", "Published"
+        HIDDEN = "hidden", "Hidden"
+        REJECTED = "rejected", "Rejected"
+
+    movie = models.ForeignKey(Movie, on_delete=models.CASCADE, related_name="reviews")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="movie_reviews",
+    )
+    booking = models.ForeignKey(
+        "bookings.Booking", on_delete=models.PROTECT, related_name="movie_reviews"
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    title = models.CharField(max_length=120)
+    text = models.TextField(max_length=3000)
+    moderation_status = models.CharField(
+        max_length=16,
+        choices=ModerationStatus.choices,
+        default=ModerationStatus.PENDING,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking", "movie"], name="one_review_per_booking_movie"
+            )
+        ]
+        indexes = [models.Index(fields=["movie", "moderation_status"])]
+
+    @property
+    def is_verified_viewer(self):
+        return bool(self.booking.checked_in_at)
+
+    def clean(self):
+        super().clean()
+        if not self.booking_id or not self.movie_id or not self.user_id:
+            return
+        if (
+            self.booking.user_id != self.user_id
+            or self.booking.show.movie_id != self.movie_id
+            or self.booking.status != "confirmed"
+            or self.booking.payment_status != "paid"
+            or not self.booking.checked_in_at
+            or self.booking.show.end_time > timezone.now()
+        ):
+            raise ValidationError(
+                "A verified check-in for a completed paid show is required to review this movie."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        previous_movie_id = None
+        if self.pk:
+            previous_movie_id = Review.objects.filter(pk=self.pk).values_list(
+                "movie_id", flat=True
+            ).first()
+        super().save(*args, **kwargs)
+        recalculate_movie_rating(self.movie_id)
+        if previous_movie_id and previous_movie_id != self.movie_id:
+            recalculate_movie_rating(previous_movie_id)
+
+    def delete(self, *args, **kwargs):
+        movie_id = self.movie_id
+        result = super().delete(*args, **kwargs)
+        recalculate_movie_rating(movie_id)
+        return result
+
+
+def recalculate_movie_rating(movie_id):
+    from django.db.models import Avg, Count
+
+    stats = Review.objects.filter(
+        movie_id=movie_id, moderation_status=Review.ModerationStatus.PUBLISHED
+    ).aggregate(rating=Avg("rating"), total=Count("id"))
+    Movie.objects.filter(pk=movie_id).update(rating=stats["rating"] or Decimal("0.0"))
+
+
+class ReviewReport(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        ACTIONED = "actioned", "Actioned"
+        DISMISSED = "dismissed", "Dismissed"
+
+    review = models.ForeignKey(
+        Review, on_delete=models.CASCADE, related_name="reports"
+    )
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="review_reports",
+    )
+    reason = models.CharField(max_length=80)
+    explanation = models.CharField(max_length=1000, blank=True, default="")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.OPEN, db_index=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review", "reporter"], name="one_report_per_user_review"
+            )
+        ]

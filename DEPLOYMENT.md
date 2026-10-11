@@ -43,7 +43,8 @@ pip install -r requirements.txt
 
 # 3. Configure environment variables
 cp .env.example .env
-# Edit .env and set SECRET_KEY, DATABASE_URL (Supabase Session Pooler URI), and SUPABASE_PUBLISHABLE_KEY
+# Edit .env and set SECRET_KEY, DATABASE_URL (Supabase Session Pooler URI),
+# SUPABASE_PUBLISHABLE_KEY, and the Razorpay test/live credentials.
 
 # 4. Run Django checks, migrations, static collection, and automated test suite
 python manage.py check
@@ -57,7 +58,14 @@ python manage.py runserver
 
 # In another terminal, start the Celery worker (requires Redis at CELERY_BROKER_URL)
 celery -A bookmyseat worker --loglevel=info
+
+# In a separate terminal, run Celery Beat for expired-reservation cleanup.
+celery -A bookmyseat beat --loglevel=info
 ```
+
+For local payments, use Razorpay test-mode credentials. Configure the webhook
+URL as `http://localhost:8000/bookings/razorpay/webhook/` only when using a
+public tunnel; Razorpay cannot reach a localhost-only URL.
 
 ---
 
@@ -102,6 +110,7 @@ git push -u origin main
    - `CSRF_TRUSTED_ORIGINS` = `https://*.onrender.com`
    - `SUPABASE_URL` = `https://iqxcgzrfjplernbidkfd.supabase.co`
    - `SUPABASE_PUBLISHABLE_KEY` = `your-supabase-publishable-key`
+   - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` = the credentials for the same Razorpay mode (test or live)
    - `CELERY_BROKER_URL` = a reachable Redis URL for the ticket-email queue
    - `SITE_URL` = the public HTTPS origin used in ticket QR verification links
    - `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `EMAIL_USE_TLS` = your SMTP sender configuration
@@ -113,7 +122,10 @@ git push -u origin main
    ```
 5. In Firebase Console, enable **Authentication → Sign-in method → Google** and add the exact Render hostname (for example, `book-1-ya9s.onrender.com`) under **Authentication → Settings → Authorized domains**. Also enable the Google provider for the same Firebase project used by the Admin service account.
 6. Deploy the updated commit to Render. The deployment applies Django migrations; then test the Google flow on the deployed login page. The backend only creates a Django session after verifying a Google-provider Firebase ID token with a verified email.
-7. Create a Render **Background Worker** using the same repository and environment, with start command `celery -A bookmyseat worker --loglevel=info`. Provision Redis and set its connection URL as `CELERY_BROKER_URL` on both the web service and worker. The worker sends confirmation emails and retries delivery failures; it must remain running for queued tickets to be delivered.
+7. In Razorpay, configure the webhook URL as `https://your-domain/bookings/razorpay/webhook/`, select `payment.captured` and `payment.failed`, and set the generated webhook secret as `RAZORPAY_WEBHOOK_SECRET`. Keep the key ID, key secret, and webhook secret in the hosting provider's secret settings.
+8. Create a Render **Background Worker** using the same repository and environment, with start command `celery -A bookmyseat worker --loglevel=info`. Provision Redis and set its connection URL as `CELERY_BROKER_URL` on both the web service and worker. The worker sends confirmation emails, processes refunds, and retries delivery failures; it must remain running for queued jobs to be processed.
+9. Create a separate Render **Background Worker** for Celery Beat with start command `celery -A bookmyseat beat --loglevel=info`. Configure the same Redis broker URL and Django/database environment variables. Beat schedules periodic cleanup of expired seat reservations.
+10. Staff users can open the protected analytics dashboard at `/admin/analytics/`; non-staff users are denied access. The dashboard includes date-filtered booking/revenue/occupancy summaries and a CSV export.
 
 > The Django-rendered login imports the Firebase browser SDK from Google's CDN; `npm install firebase` and `firebase deploy` are not part of this Render deployment. Firebase Hosting would host static files, not replace this Django application or its database-backed booking routes.
 

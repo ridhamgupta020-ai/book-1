@@ -25,11 +25,14 @@
           {% for ss in show_seats %}
             <button
               type="button"
-              class="btn btn-sm seat-btn {% if ss.status != 'available' %}btn-secondary disabled{% else %}btn-outline-light{% endif %}"
+              class="btn btn-sm seat-btn {% if ss.pk in selected_seat_ids %}btn-danger selected{% elif ss.status == 'booked' %}btn-danger{% elif ss.status == 'held' %}btn-warning{% else %}btn-outline-light{% endif %}"
               data-seat-id="{{ ss.id }}"
               data-seat-label="{{ ss.seat.label }}"
               data-seat-price="{{ ss.effective_price }}"
-              {% if ss.status != 'available' %}disabled{% endif %}
+              data-status="{{ ss.status }}"
+              data-held-by-current-booking="{% if ss.pk in selected_seat_ids %}true{% else %}false{% endif %}"
+              title="{{ ss.seat.get_seat_type_display }} — ₹{{ ss.effective_price }} — {{ ss.get_status_display }}"
+              {% if ss.status != 'available' and ss.pk not in selected_seat_ids %}disabled aria-disabled="true"{% endif %}
             >
               {{ ss.seat.seat_number }}
             </button>
@@ -38,18 +41,29 @@
       {% endfor %}
     </div>
 
+    <div class="d-flex flex-wrap justify-content-center gap-3 small text-secondary mb-4" aria-label="Seat availability legend">
+      <span><span class="seat-legend available"></span>Available</span>
+      <span><span class="seat-legend held"></span>Temporarily reserved</span>
+      <span><span class="seat-legend booked"></span>Booked</span>
+      <span><span class="seat-legend selected"></span>Your selection</span>
+    </div>
+
     <div class="card bg-cinema-surface border-secondary border-opacity-25 p-3 d-flex flex-md-row justify-content-between align-items-center">
       <div>
         <div class="small text-secondary">Selected Seats: <span id="selected-seat-labels" class="text-white fw-semibold">None</span></div>
         <div class="h5 mb-0 mt-1 font-mono">Subtotal: ₹<span id="selected-seat-total">0.00</span></div>
       </div>
       <button type="submit" class="btn btn-danger px-4 fw-semibold" id="proceed-checkout-btn" disabled>
-        Lock Seats &amp; Proceed
+        {% if booking %}Update Seats{% else %}Lock Seats &amp; Proceed{% endif %}
       </button>
     </div>
   </form>
+  <p id="availability-status" class="small text-secondary text-center mt-3" aria-live="polite">Seat availability refreshes automatically.</p>
 </div>
 {% endblock %}
 {% block extra_js %}
 <script src="{% static 'js/seat_selection.js' %}"></script>
+<script>
+  window.movieShowAvailabilityUrl = "{% url 'bookings:seat_availability' show.id %}{% if booking %}?booking={{ booking.booking_reference|urlencode }}{% endif %}";
+</script>
 {% endblock %}
