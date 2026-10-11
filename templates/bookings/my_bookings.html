@@ -16,6 +16,9 @@
           </div>
           <div class="d-flex gap-2">
             <a href="{% url 'bookings:ticket_detail' booking.booking_reference %}" class="btn btn-outline-light btn-sm px-3">View Ticket</a>
+            {% if booking.status == "confirmed" and booking.payment_status == "paid" %}
+              <a href="{% url 'bookings:ticket_download' booking.booking_reference %}" class="btn btn-danger btn-sm px-3">Download PDF</a>
+            {% endif %}
             {% if booking.is_cancellable %}
               <form method="post" action="{% url 'bookings:cancel_booking' booking.booking_reference %}">
                 {% csrf_token %}

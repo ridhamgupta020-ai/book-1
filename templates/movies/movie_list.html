@@ -4,35 +4,112 @@
 {% block content %}
 <div class="container page-compact">
   <h1 class="h3 fw-bold font-display mb-3">Explore Movies</h1>
-  <form method="get" class="row g-2 mb-3">
-    <div class="col-md-4">{{ form.q }}</div>
+  <form method="get" class="row g-2 mb-3" id="movie-filter-form">
+    <div class="col-md-4">
+      <label class="visually-hidden" for="id_q">Search by title</label>
+      {{ form.q }}
+    </div>
     <div class="col-md-2">
-      <select name="genre" class="form-select bg-dark text-light border-secondary">
+      <label class="visually-hidden" for="id_genre">Genre</label>
+      <select name="genre" id="id_genre" class="form-select bg-dark text-light border-secondary">
         <option value="">All Genres</option>
         {% for g in genres %}
-          <option value="{{ g }}" {% if request.GET.genre == g %}selected{% endif %}>{{ g }}</option>
+          <option value="{{ g }}" {% if form.genre.value == g %}selected{% endif %}>{{ g }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="col-md-2">
-      <select name="language" class="form-select bg-dark text-light border-secondary">
+      <label class="visually-hidden" for="id_language">Language</label>
+      <select name="language" id="id_language" class="form-select bg-dark text-light border-secondary">
         <option value="">All Languages</option>
         {% for lang in languages %}
-          <option value="{{ lang }}" {% if request.GET.language == lang %}selected{% endif %}>{{ lang }}</option>
+          <option value="{{ lang }}" {% if form.language.value == lang %}selected{% endif %}>{{ lang }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="col-md-2">
-      <select name="sort" class="form-select bg-dark text-light border-secondary">
-        <option value="-release_date">Newest First</option>
-        <option value="title">Title (A–Z)</option>
-        <option value="duration_minutes">Duration</option>
+      <label class="visually-hidden" for="id_city">City</label>
+      <select name="city" id="id_city" class="form-select bg-dark text-light border-secondary">
+        <option value="">All Cities</option>
+        {% for city in cities %}
+          <option value="{{ city }}" {% if form.city.value == city %}selected{% endif %}>{{ city }}</option>
+        {% endfor %}
       </select>
     </div>
     <div class="col-md-2">
-      <button type="submit" class="btn btn-danger w-100">Filter</button>
+      <label class="visually-hidden" for="id_theatre">Theatre</label>
+      <select name="theatre" id="id_theatre" class="form-select bg-dark text-light border-secondary">
+        <option value="">All Theatres</option>
+        {% for theatre in theatres %}
+          <option value="{{ theatre.id }}" {% if form.theatre.value|slugify == theatre.id|stringformat:"s" %}selected{% endif %}>{{ theatre.name }} — {{ theatre.city }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-secondary" for="id_release_from">Released from</label>
+      <input type="date" name="release_from" id="id_release_from" class="form-control bg-dark text-light border-secondary" value="{{ form.release_from.value|date:'Y-m-d'|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-secondary" for="id_release_to">Released to</label>
+      <input type="date" name="release_to" id="id_release_to" class="form-control bg-dark text-light border-secondary" value="{{ form.release_to.value|date:'Y-m-d'|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="visually-hidden" for="id_min_rating">Minimum rating</label>
+      <input type="number" name="min_rating" id="id_min_rating" min="0" max="10" step="0.1" placeholder="Min rating / 10" class="form-control bg-dark text-light border-secondary" value="{{ form.min_rating.value|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="visually-hidden" for="id_showtime">Showtime</label>
+      <select name="showtime" id="id_showtime" class="form-select bg-dark text-light border-secondary">
+        {% for value, label in form.fields.showtime.choices %}
+          <option value="{{ value }}" {% if form.showtime.value == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="visually-hidden" for="id_status">Release status</label>
+      <select name="status" id="id_status" class="form-select bg-dark text-light border-secondary">
+        {% for value, label in form.fields.status.choices %}
+          <option value="{{ value }}" {% if form.status.value == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="visually-hidden" for="id_sort">Sort movies</label>
+      <select name="sort" id="id_sort" class="form-select bg-dark text-light border-secondary">
+        {% for value, label in form.fields.sort.choices %}
+          <option value="{{ value }}" {% if form.sort.value == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-danger w-100">Apply Filters</button>
     </div>
   </form>
+  {% if form.errors %}
+    <div class="alert alert-warning" role="alert">Please correct the invalid filter values.</div>
+  {% endif %}
+  <p class="text-secondary small" aria-live="polite"><span id="matching-count">{{ matching_count }}</span> matching movies</p>
+
+  {% if recommendations %}
+    <section class="mb-4" aria-labelledby="recommendations-heading">
+      <h2 id="recommendations-heading" class="h4 fw-bold font-display mb-3">Recommended for You</h2>
+      <div class="movie-grid">
+        {% for movie in recommendations %}
+          <article class="card movie-card bg-cinema-surface border-secondary border-opacity-25">
+            <a href="{{ movie.get_absolute_url }}" class="movie-poster-link" aria-label="View {{ movie.title }}">
+              <img class="movie-poster" src="{{ movie.display_poster_url }}" alt="{{ movie.title }} poster" loading="lazy" decoding="async">
+            </a>
+            <div class="card-body movie-details d-flex flex-column">
+              <div class="text-secondary small mb-1">{{ movie.genre }} &middot; {{ movie.language }}</div>
+              <h3 class="movie-title h6 fw-bold">{{ movie.title }}</h3>
+              <p class="movie-meta text-secondary small">Rating {{ movie.rating }}/10</p>
+              <a href="{{ movie.get_absolute_url }}" class="book-ticket-button btn btn-outline-danger mt-2">Select Showtime</a>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 
   <div class="movie-grid">
     {% for movie in page_obj %}
@@ -53,7 +130,7 @@
         <div class="card-body movie-details d-flex flex-column">
           <div class="text-secondary small mb-1">{{ movie.genre }} &middot; {{ movie.language }} &middot; {{ movie.certificate }}</div>
           <h2 class="movie-title h6 fw-bold">{{ movie.title }}</h2>
-          <p class="movie-meta text-secondary small">{{ movie.duration_minutes }} mins</p>
+          <p class="movie-meta text-secondary small">{{ movie.duration_minutes }} mins &middot; Rating {{ movie.rating }}/10</p>
           <p class="movie-description text-secondary small flex-grow-1">{{ movie.description|truncatewords:50 }}</p>
           <a href="{{ movie.get_absolute_url }}" class="book-ticket-button btn btn-outline-danger mt-2">Select Showtime</a>
         </div>
@@ -62,5 +139,47 @@
       <p class="text-secondary py-4 text-center">No movies matched your filter criteria.</p>
     {% endfor %}
   </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+    <nav class="mt-4" aria-label="Movie result pages">
+      <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+          <li class="page-item"><a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' and key != 'count_only' %}{{ key }}={{ value|urlencode }}&amp;{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Previous</a></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+          <li class="page-item"><a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' and key != 'count_only' %}{{ key }}={{ value|urlencode }}&amp;{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  {% endif %}
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+  (() => {
+    const form = document.getElementById("movie-filter-form");
+    const count = document.getElementById("matching-count");
+    let debounce;
+    const updateCount = async () => {
+      const params = new URLSearchParams(new FormData(form));
+      params.set("count_only", "1");
+      try {
+        const response = await fetch(`${form.action || window.location.pathname}?${params}`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        count.textContent = data.count;
+      } catch (error) {
+        console.error("Unable to update movie result count.", error);
+      }
+    };
+    form.addEventListener("change", updateCount);
+    form.querySelector("[name=q]").addEventListener("input", () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(updateCount, 250);
+    });
+  })();
+</script>
 {% endblock %}

@@ -12,6 +12,12 @@ urlpatterns = [
         views.verify_payment_callback_view,
         name="payment_callback",
     ),
+    path("ticket/verify/", views.verify_ticket_view, name="verify_ticket"),
+    path(
+        "<str:booking_reference>/ticket/download/",
+        views.ticket_download_view,
+        name="ticket_download",
+    ),
     path("<str:booking_reference>/ticket/", views.ticket_detail_view, name="ticket_detail"),
     path("<str:booking_reference>/cancel/", views.cancel_booking_view, name="cancel_booking"),
 ]

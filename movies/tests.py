@@ -49,6 +49,73 @@ class MovieAndShowTestCase(TestCase):
         self.assertContains(response, "movie-poster")
         self.assertContains(response, 'loading="lazy"')
 
+    def test_movie_search_is_title_only_and_returns_live_count(self):
+        self.movie.cast = "Chronos"
+        self.movie.save(update_fields=["cast"])
+
+        count_response = self.client.get(
+            reverse("movies:movie_list"),
+            {"q": "Chronos", "count_only": "1"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(count_response.status_code, 200)
+        self.assertEqual(count_response.json(), {"count": 0})
+
+    def test_movie_filters_by_release_rating_theatre_and_showtime(self):
+        self.movie.rating = Decimal("8.5")
+        self.movie.save(update_fields=["rating"])
+        show_start = timezone.localtime(timezone.now()).replace(
+            hour=19, minute=0, second=0, microsecond=0
+        ) + timedelta(days=1)
+        Show.objects.create(
+            movie=self.movie,
+            screen=self.screen,
+            start_time=show_start,
+            end_time=show_start + timedelta(hours=2),
+            ticket_price=Decimal("320.00"),
+        )
+
+        response = self.client.get(
+            reverse("movies:movie_list"),
+            {
+                "city": self.theatre.city,
+                "theatre": self.theatre.id,
+                "min_rating": "8.0",
+                "showtime": "evening",
+                "release_from": date.today().isoformat(),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, ">1</span> matching movies")
+
+        no_match = self.client.get(
+            reverse("movies:movie_list"),
+            {
+                "city": self.theatre.city,
+                "theatre": self.theatre.id,
+                "showtime": "morning",
+            },
+        )
+        self.assertContains(no_match, ">0</span> matching movies")
+
+    def test_recently_viewed_movie_drives_recommendations(self):
+        related_movie = Movie.objects.create(
+            title="Chronos Returns",
+            description="A time-bending sequel.",
+            genre=self.movie.genre,
+            language=self.movie.language,
+            duration_minutes=110,
+            release_date=date.today(),
+            cast="New Cast",
+            director="New Director",
+        )
+        self.client.get(reverse("movies:movie_detail", kwargs={"slug": self.movie.slug}))
+
+        response = self.client.get(reverse("movies:movie_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recommended for You")
+        self.assertContains(response, related_movie.title)
+
     def test_prevent_overlapping_shows_on_same_screen(self):
         start = timezone.now() + timedelta(hours=3)
         end = start + timedelta(hours=2, minutes=30)

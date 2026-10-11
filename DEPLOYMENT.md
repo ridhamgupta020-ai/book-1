@@ -54,6 +54,9 @@ python manage.py test
 
 # 5. Start local server
 python manage.py runserver
+
+# In another terminal, start the Celery worker (requires Redis at CELERY_BROKER_URL)
+celery -A bookmyseat worker --loglevel=info
 ```
 
 ---
@@ -99,6 +102,9 @@ git push -u origin main
    - `CSRF_TRUSTED_ORIGINS` = `https://*.onrender.com`
    - `SUPABASE_URL` = `https://iqxcgzrfjplernbidkfd.supabase.co`
    - `SUPABASE_PUBLISHABLE_KEY` = `your-supabase-publishable-key`
+   - `CELERY_BROKER_URL` = a reachable Redis URL for the ticket-email queue
+   - `SITE_URL` = the public HTTPS origin used in ticket QR verification links
+   - `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `EMAIL_USE_TLS` = your SMTP sender configuration
    - Firebase Web app settings may be overridden with `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, and `VITE_FIREBASE_APP_ID`. The supplied public web config is already the Django default.
    - `FIREBASE_ADMIN_CREDENTIALS` = the Firebase service account JSON, stored as a Render secret. Never commit this value.
 4. Render executes `./build.sh` (`pip install -r requirements.txt`, `python manage.py collectstatic --noinput`, `python manage.py migrate --noinput`) and starts Gunicorn with:
@@ -107,6 +113,7 @@ git push -u origin main
    ```
 5. In Firebase Console, enable **Authentication → Sign-in method → Google** and add the exact Render hostname (for example, `book-1-ya9s.onrender.com`) under **Authentication → Settings → Authorized domains**. Also enable the Google provider for the same Firebase project used by the Admin service account.
 6. Deploy the updated commit to Render. The deployment applies Django migrations; then test the Google flow on the deployed login page. The backend only creates a Django session after verifying a Google-provider Firebase ID token with a verified email.
+7. Create a Render **Background Worker** using the same repository and environment, with start command `celery -A bookmyseat worker --loglevel=info`. Provision Redis and set its connection URL as `CELERY_BROKER_URL` on both the web service and worker. The worker sends confirmation emails and retries delivery failures; it must remain running for queued tickets to be delivered.
 
 > The Django-rendered login imports the Firebase browser SDK from Google's CDN; `npm install firebase` and `firebase deploy` are not part of this Render deployment. Firebase Hosting would host static files, not replace this Django application or its database-backed booking routes.
 

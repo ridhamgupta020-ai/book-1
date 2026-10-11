@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Ticket Verification | MyBookShow{% endblock %}
+{% block content %}
+<div class="container py-5" style="max-width: 680px;">
+  <div class="card bg-cinema-surface border-secondary border-opacity-25 p-4">
+    {% if is_valid %}
+      <div class="text-success small fw-semibold mb-2">Verified Booking</div>
+      <h1 class="h3 fw-bold font-display">{{ booking.show.movie.title }}</h1>
+      <p class="text-secondary mb-1">{{ booking.show.screen.theatre.name }} — {{ booking.show.screen.theatre.city }}</p>
+      <p class="text-secondary mb-1">{{ booking.show.screen.name }} &middot; {{ booking.show.start_time|date:"D, d M Y H:i" }}</p>
+      <p class="mb-0">Booking {{ booking.booking_reference }} &middot; {% for entry in booking.booking_seats.all %}{{ entry.show_seat.seat.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% else %}
+      <div class="text-danger small fw-semibold mb-2">Ticket Not Valid</div>
+      <h1 class="h4 fw-bold font-display">This ticket could not be verified.</h1>
+      <p class="text-secondary mb-0">The QR code is invalid, or the booking is no longer confirmed.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

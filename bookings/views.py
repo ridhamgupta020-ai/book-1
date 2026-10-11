@@ -2,12 +2,15 @@ import secrets
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.core import signing
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from movies.models import Show
 from .forms import SeatSelectionForm
 from .models import Booking
 from .payments import PaymentGatewayService
+from .tickets import render_booking_ticket_pdf
 
 
 @login_required
@@ -133,6 +136,59 @@ def ticket_detail_view(request, booking_reference):
             "booking": booking,
             "qr_data_uri": qr_data_uri,
         },
+    )
+
+
+@login_required
+def ticket_download_view(request, booking_reference):
+    booking = get_object_or_404(
+        Booking.objects.select_related(
+            "show__movie", "show__screen", "show__screen__theatre"
+        ).prefetch_related("booking_seats__show_seat__seat"),
+        booking_reference=booking_reference,
+        user=request.user,
+        status=Booking.Status.CONFIRMED,
+        payment_status=Booking.PaymentStatus.PAID,
+    )
+    response = HttpResponse(
+        render_booking_ticket_pdf(booking), content_type="application/pdf"
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="ticket-{booking.booking_reference}.pdf"'
+    )
+    return response
+
+
+def verify_ticket_view(request):
+    token = request.GET.get("token", "")
+    try:
+        payload = signing.loads(token, salt="bookings.ticket-verification")
+    except signing.BadSignature:
+        return render(
+            request,
+            "bookings/ticket_verification.html",
+            {"is_valid": False},
+            status=400,
+        )
+
+    booking = (
+        Booking.objects.select_related(
+            "show__movie", "show__screen", "show__screen__theatre"
+        )
+        .prefetch_related("booking_seats__show_seat__seat")
+        .filter(
+            pk=payload.get("booking_id"),
+            payment_transaction_id=payload.get("payment_reference"),
+            status=Booking.Status.CONFIRMED,
+            payment_status=Booking.PaymentStatus.PAID,
+        )
+        .first()
+    )
+    return render(
+        request,
+        "bookings/ticket_verification.html",
+        {"is_valid": booking is not None, "booking": booking},
+        status=200 if booking else 404,
     )
 
 

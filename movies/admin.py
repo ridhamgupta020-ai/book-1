@@ -11,6 +11,7 @@ class MovieAdmin(admin.ModelAdmin):
         "certificate",
         "duration_minutes",
         "release_date",
+        "rating",
         "status",
         "is_featured",
     )

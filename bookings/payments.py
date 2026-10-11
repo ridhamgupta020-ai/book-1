@@ -7,12 +7,17 @@ and guarantees idempotent callback handling.
 import hashlib
 import hmac
 import secrets
+import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from kombu.exceptions import OperationalError
 from movies.models import ShowSeat
 from .models import Booking
+
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentGatewayService:
@@ -115,4 +120,22 @@ class PaymentGatewayService:
                     "updated_at",
                 ]
             )
+            transaction.on_commit(
+                lambda booking_id=locked_booking.pk: cls._queue_ticket_email(
+                    booking_id
+                ),
+                robust=True,
+            )
             return locked_booking
+
+    @staticmethod
+    def _queue_ticket_email(booking_id: int) -> None:
+        from .tasks import send_booking_ticket_email
+
+        try:
+            send_booking_ticket_email.delay(booking_id)
+        except (OperationalError, OSError):
+            logger.exception(
+                "Could not queue the confirmation ticket email for booking %s.",
+                booking_id,
+            )

@@ -1,7 +1,7 @@
 from datetime import datetime
 from django.core.paginator import Paginator
 from django.db import OperationalError, ProgrammingError
-from django.db.models import Count, Min, Q
+from django.db.models import Count, F, Min, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -98,16 +98,22 @@ def movie_list_view(request):
                 filter=Q(shows__bookings__status=Booking.Status.CONFIRMED),
                 distinct=True,
             ),
-            lowest_ticket_price=Min(
-                "shows__ticket_price", filter=show_filters
-            ),
+            lowest_ticket_price=Min("shows__ticket_price", filter=show_filters),
         ).distinct()
         sort_map = {
             "popularity": ("-popularity", "-release_date", "title"),
             "-release_date": ("-release_date", "title"),
             "-rating": ("-rating", "-release_date", "title"),
-            "ticket_price": ("lowest_ticket_price", "-release_date", "title"),
-            "-ticket_price": ("-lowest_ticket_price", "-release_date", "title"),
+            "ticket_price": (
+                F("lowest_ticket_price").asc(nulls_last=True),
+                "-release_date",
+                "title",
+            ),
+            "-ticket_price": (
+                F("lowest_ticket_price").desc(nulls_last=True),
+                "-release_date",
+                "title",
+            ),
         }
         queryset = queryset.order_by(*sort_map.get(sort, sort_map["-release_date"]))
 
