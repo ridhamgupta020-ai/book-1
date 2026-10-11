@@ -45,6 +45,12 @@ services:
         value: "https://iqxcgzrfjplernbidkfd.supabase.co"
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
       # Configure these with the Firebase web app settings for the same project
       # that owns the Google provider and service-account credentials.
       - key: VITE_FIREBASE_API_KEY

@@ -34,8 +34,8 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
         self.gateway_client.payment.fetch.side_effect = (
             lambda payment_id: self.gateway_payments[payment_id]
         )
-        client_patcher = patch.object(
-            PaymentGatewayService, "_client", return_value=self.gateway_client
+        client_patcher = patch(
+            "bookings.payments.razorpay.Client", return_value=self.gateway_client
         )
         client_patcher.start()
         self.addCleanup(client_patcher.stop)
@@ -350,6 +350,58 @@ class BookingConcurrencyAndPaymentTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["currency"], "INR")
         self.assertEqual(booking.payment_attempts.count(), 1)
+
+    @override_settings(RAZORPAY_KEY_ID="", RAZORPAY_KEY_SECRET="")
+    def test_checkout_reports_missing_razorpay_configuration_without_creating_order(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        self.client.force_login(self.user1)
+        checkout_url = reverse(
+            "bookings:checkout",
+            kwargs={"booking_reference": booking.booking_reference},
+        )
+
+        with self.assertLogs("bookings.views", level="ERROR") as logs:
+            response = self.client.post(checkout_url)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["error"],
+            "Online payments are temporarily unavailable.",
+        )
+        self.assertIn("RAZORPAY_KEY_ID", "\n".join(logs.output))
+        self.assertIn("RAZORPAY_KEY_SECRET", "\n".join(logs.output))
+        self.assertEqual(booking.payment_attempts.count(), 0)
+
+    def test_gateway_order_failure_is_reported_without_recording_attempt(self):
+        booking = Booking.create_pending_booking(
+            user=self.user1,
+            show=self.show,
+            show_seat_ids=[self.show_seat_a1.id],
+        )
+        self.client.force_login(self.user1)
+        checkout_url = reverse(
+            "bookings:checkout",
+            kwargs={"booking_reference": booking.booking_reference},
+        )
+        self.gateway_client.order.create.side_effect = RuntimeError(
+            "upstream diagnostic that must not reach the user"
+        )
+
+        with self.assertLogs("bookings.payments", level="ERROR") as logs:
+            response = self.client.post(checkout_url)
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()["error"],
+            "The payment provider could not start checkout. Please retry.",
+        )
+        self.assertNotIn("upstream diagnostic", response.content.decode())
+        self.assertNotIn("upstream diagnostic", "\n".join(logs.output))
+        self.assertEqual(booking.payment_attempts.count(), 0)
 
     def test_unresolved_payment_prevents_pending_booking_cancellation(self):
         booking = Booking.create_pending_booking(

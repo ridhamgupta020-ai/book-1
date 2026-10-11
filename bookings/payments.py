@@ -22,12 +22,26 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+class PaymentGatewayUnavailable(Exception):
+    pass
+
+
 class PaymentGatewayService:
     @staticmethod
     def _client():
-        if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
+        missing_settings = [
+            name
+            for name, value in (
+                ("RAZORPAY_KEY_ID", settings.RAZORPAY_KEY_ID),
+                ("RAZORPAY_KEY_SECRET", settings.RAZORPAY_KEY_SECRET),
+            )
+            if not value.strip()
+        ]
+        if missing_settings:
             raise ImproperlyConfigured(
-                "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be configured before checkout."
+                "Missing required Razorpay configuration: "
+                + ", ".join(missing_settings)
+                + "."
             )
         return razorpay.Client(
             auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
@@ -83,17 +97,32 @@ class PaymentGatewayService:
             ):
                 raise ValidationError("The selected seats are no longer reserved.")
 
-            order = cls._client().order.create(
-                data={
-                    "amount": int(locked_booking.total_amount * 100),
-                    "currency": "INR",
-                    "receipt": locked_booking.booking_reference,
-                    "notes": {
-                        "booking_reference": locked_booking.booking_reference,
-                        "user_id": str(locked_booking.user_id),
-                    },
-                }
-            )
+            try:
+                order = cls._client().order.create(
+                    data={
+                        "amount": int(locked_booking.total_amount * 100),
+                        "currency": "INR",
+                        "receipt": locked_booking.booking_reference,
+                        "notes": {
+                            "booking_reference": locked_booking.booking_reference,
+                            "user_id": str(locked_booking.user_id),
+                        },
+                    }
+                )
+            except ImproperlyConfigured:
+                raise
+            except Exception as exc:
+                status_code = getattr(exc, "status_code", None)
+                if not isinstance(status_code, int):
+                    status_code = "unknown"
+                logger.error(
+                    "Razorpay order creation failed (error_type=%s, status_code=%s).",
+                    type(exc).__name__,
+                    status_code,
+                )
+                raise PaymentGatewayUnavailable(
+                    "The payment provider could not start checkout. Please retry."
+                ) from exc
             if (
                 order.get("currency") != "INR"
                 or order.get("amount") != int(locked_booking.total_amount * 100)

@@ -122,6 +122,7 @@ git push -u origin main
    - `FIREBASE_ADMIN_CREDENTIALS` = the service-account JSON for that same Firebase project, stored as a Render secret. Never commit or print this value.
    - `DEFAULT_FROM_EMAIL`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `EMAIL_USE_TLS` = production SMTP sender settings used for password resets and ticket email. Do not leave the production SMTP host as `localhost`.
    - `PASSWORD_RESET_TIMEOUT` = password reset link lifetime in seconds (default 3600).
+   - For an existing Render service, add the three Razorpay variables in **Environment**; `sync: false` declares their names but does not populate credentials. Use newly generated test credentials and a separate webhook secret, then save and redeploy. Never reuse credentials that have been exposed or committed.
 4. Render executes `./build.sh` (`pip install -r requirements.txt`, `python manage.py collectstatic --noinput`, `python manage.py migrate --noinput`) and starts Gunicorn with:
    ```bash
    gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 60

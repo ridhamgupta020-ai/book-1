@@ -13,7 +13,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from movies.models import Show
 from .forms import SeatSelectionForm
 from .models import Booking, BookingSeat
-from .payments import PaymentGatewayService
+from .payments import PaymentGatewayService, PaymentGatewayUnavailable
 from .tickets import render_booking_ticket_pdf
 
 
@@ -176,12 +176,14 @@ def checkout_view(request, booking_reference):
             payment_order = PaymentGatewayService.create_payment_order(booking)
         except ValidationError as exc:
             return JsonResponse({"error": "; ".join(exc.messages)}, status=400)
-        except ImproperlyConfigured:
-            logger.exception("Razorpay is not configured for checkout.")
+        except ImproperlyConfigured as exc:
+            logger.error("Razorpay checkout configuration error: %s", exc)
             return JsonResponse(
                 {"error": "Online payments are temporarily unavailable."},
                 status=503,
             )
+        except PaymentGatewayUnavailable as exc:
+            return JsonResponse({"error": str(exc)}, status=502)
         return JsonResponse(payment_order)
 
     return render(

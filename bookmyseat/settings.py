@@ -237,9 +237,9 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").strip().lower() in {
 }
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "tickets@mybookshow.com")
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8000").rstrip("/")
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "").strip()
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
 
 # Safe structured logging that never prints credentials or DATABASE_URL
 LOGGING = {
