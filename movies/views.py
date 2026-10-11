@@ -1,10 +1,12 @@
 from datetime import datetime
 from django.core.paginator import Paginator
 from django.db import OperationalError, ProgrammingError
-from django.db.models import Q
+from django.db.models import Count, Min, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from bookmyseat.bootstrap import ensure_database_ready
+from bookings.models import Booking
 from .forms import MovieFilterForm
 from .models import Movie, Show, Theatre
 
@@ -41,31 +43,82 @@ def home_view(request):
 def movie_list_view(request):
     form = MovieFilterForm(request.GET or None)
     queryset = Movie.objects.exclude(status=Movie.Status.ARCHIVED)
+    now = timezone.now()
 
     if form.is_valid():
         q = form.cleaned_data.get("q")
         genre = form.cleaned_data.get("genre")
         language = form.cleaned_data.get("language")
+        city = form.cleaned_data.get("city")
+        theatre = form.cleaned_data.get("theatre")
+        release_from = form.cleaned_data.get("release_from")
+        release_to = form.cleaned_data.get("release_to")
+        min_rating = form.cleaned_data.get("min_rating")
+        showtime = form.cleaned_data.get("showtime")
         status = form.cleaned_data.get("status")
         sort = form.cleaned_data.get("sort") or "-release_date"
 
         if q:
-            queryset = queryset.filter(
-                Q(title__icontains=q)
-                | Q(director__icontains=q)
-                | Q(cast__icontains=q)
-            )
+            queryset = queryset.filter(title__icontains=q)
         if genre:
             queryset = queryset.filter(genre__iexact=genre)
         if language:
             queryset = queryset.filter(language__iexact=language)
+        if release_from:
+            queryset = queryset.filter(release_date__gte=release_from)
+        if release_to:
+            queryset = queryset.filter(release_date__lte=release_to)
+        if min_rating is not None:
+            queryset = queryset.filter(rating__gte=min_rating)
         if status:
             queryset = queryset.filter(status=status)
-        if sort in {"-release_date", "title", "duration_minutes"}:
-            queryset = queryset.order_by(sort)
+        show_filters = Q(
+            shows__is_active=True,
+            shows__start_time__gte=now,
+            shows__screen__theatre__is_active=True,
+        )
+        if city:
+            show_filters &= Q(shows__screen__theatre__city__iexact=city)
+        if theatre:
+            show_filters &= Q(shows__screen__theatre_id=theatre)
+        if showtime == "morning":
+            show_filters &= Q(shows__start_time__hour__lt=12)
+        elif showtime == "afternoon":
+            show_filters &= Q(
+                shows__start_time__hour__gte=12, shows__start_time__hour__lt=17
+            )
+        elif showtime == "evening":
+            show_filters &= Q(shows__start_time__hour__gte=17)
+        if city or theatre or showtime:
+            queryset = queryset.filter(show_filters)
+
+        queryset = queryset.annotate(
+            popularity=Count(
+                "shows__bookings",
+                filter=Q(shows__bookings__status=Booking.Status.CONFIRMED),
+                distinct=True,
+            ),
+            lowest_ticket_price=Min(
+                "shows__ticket_price", filter=show_filters
+            ),
+        ).distinct()
+        sort_map = {
+            "popularity": ("-popularity", "-release_date", "title"),
+            "-release_date": ("-release_date", "title"),
+            "-rating": ("-rating", "-release_date", "title"),
+            "ticket_price": ("lowest_ticket_price", "-release_date", "title"),
+            "-ticket_price": ("-lowest_ticket_price", "-release_date", "title"),
+        }
+        queryset = queryset.order_by(*sort_map.get(sort, sort_map["-release_date"]))
+
+    if request.GET.get("count_only") == "1":
+        if not form.is_valid():
+            return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
+        return JsonResponse({"count": queryset.count()})
 
     paginator = Paginator(queryset, 9)
     page_obj = paginator.get_page(request.GET.get("page"))
+    matching_count = queryset.count()
 
     genres = (
         Movie.objects.exclude(status=Movie.Status.ARCHIVED)
@@ -77,6 +130,50 @@ def movie_list_view(request):
         .values_list("language", flat=True)
         .distinct()
     )
+    cities = Theatre.objects.filter(is_active=True).values_list("city", flat=True).distinct()
+    theatres = Theatre.objects.filter(is_active=True).order_by("city", "name")
+
+    recent_movie_ids = request.session.get("recently_viewed_movies", [])
+    booked_movie_ids = []
+    preferred_genres = []
+    preferred_languages = []
+    if request.user.is_authenticated:
+        booking_history = Booking.objects.filter(
+            user=request.user, status=Booking.Status.CONFIRMED
+        ).select_related("show__movie")
+        booked_movie_ids = list(
+            booking_history.values_list("show__movie_id", flat=True).distinct()
+        )
+        preferred_genres = list(
+            booking_history.values_list("show__movie__genre", flat=True).distinct()
+        )
+        preferred_languages = list(
+            booking_history.values_list("show__movie__language", flat=True).distinct()
+        )
+
+    viewed_movies = Movie.objects.filter(pk__in=recent_movie_ids)
+    preferred_genres.extend(viewed_movies.values_list("genre", flat=True))
+    preferred_languages.extend(viewed_movies.values_list("language", flat=True))
+    recommendation_query = Q(genre__in=set(preferred_genres)) | Q(
+        language__in=set(preferred_languages)
+    )
+    if preferred_genres or preferred_languages:
+        recommendations = (
+            Movie.objects.exclude(status=Movie.Status.ARCHIVED)
+            .exclude(pk__in=booked_movie_ids)
+            .exclude(pk__in=recent_movie_ids)
+            .filter(recommendation_query)
+            .annotate(
+                popularity=Count(
+                    "shows__bookings",
+                    filter=Q(shows__bookings__status=Booking.Status.CONFIRMED),
+                    distinct=True,
+                )
+            )
+            .order_by("-popularity", "-rating", "-release_date")[:4]
+        )
+    else:
+        recommendations = Movie.objects.none()
 
     return render(
         request,
@@ -86,12 +183,19 @@ def movie_list_view(request):
             "page_obj": page_obj,
             "genres": sorted(set(genres)),
             "languages": sorted(set(languages)),
+            "cities": sorted(set(cities)),
+            "theatres": theatres,
+            "matching_count": matching_count,
+            "recommendations": recommendations,
         },
     )
 
 
 def movie_detail_view(request, slug):
     movie = get_object_or_404(Movie, slug=slug)
+    recent_movie_ids = request.session.get("recently_viewed_movies", [])
+    recent_movie_ids = [movie_id for movie_id in recent_movie_ids if movie_id != movie.id]
+    request.session["recently_viewed_movies"] = [movie.id, *recent_movie_ids[:9]]
     selected_date_str = request.GET.get("date")
     selected_city = request.GET.get("city", "").strip()
 

@@ -1,6 +1,10 @@
 from decimal import Decimal
 from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator, MinValueValidator
+from django.core.validators import (
+    FileExtensionValidator,
+    MaxValueValidator,
+    MinValueValidator,
+)
 from django.db import models
 from django.urls import reverse
 from django.templatetags.static import static
@@ -45,6 +49,16 @@ class Movie(models.Model):
     language = models.CharField(max_length=80, db_index=True)
     duration_minutes = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     release_date = models.DateField(db_index=True)
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+        default=Decimal("0.0"),
+        validators=[
+            MinValueValidator(Decimal("0.0")),
+            MaxValueValidator(Decimal("10.0")),
+        ],
+        help_text="Editorial rating from 0 to 10.",
+    )
     certificate = models.CharField(
         max_length=8, choices=Certificate.choices, default=Certificate.UA
     )
