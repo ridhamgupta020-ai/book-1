@@ -2,16 +2,35 @@
 {% load static %}
 {% block title %}Sign In — MyBookShow{% endblock %}
 {% block content %}
-<div class="container py-5" style="max-width: 460px;">
-  <div class="card bg-cinema-surface border-secondary border-opacity-25 p-4">
-    <h1 class="h3 fw-bold font-display mb-3">Sign In</h1>
+<div class="container auth-page py-5">
+  <section class="card auth-card bg-cinema-surface border-secondary border-opacity-25 p-4 p-sm-5" aria-labelledby="login-title">
+    <h1 id="login-title" class="h3 fw-bold font-display mb-4">Sign In</h1>
     <form id="login-form" method="post">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ next|default:'' }}" />
-      {{ form.as_p }}
-      <button type="submit" class="btn btn-danger w-100 py-2 fw-semibold">Sign In</button>
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger py-2" role="alert">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
+        {{ form.username }}
+        {% if form.username.errors %}
+          <div id="username-errors" class="invalid-feedback d-block" role="alert">{{ form.username.errors }}</div>
+        {% endif %}
+      </div>
+      <div class="mb-4">
+        <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        {% if form.password.errors %}
+          <div id="password-errors" class="invalid-feedback d-block" role="alert">{{ form.password.errors }}</div>
+        {% endif %}
+      </div>
+      <button id="password-sign-in" type="submit" class="btn btn-danger w-100 py-2 fw-semibold">
+        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true" hidden></span>
+        <span class="submit-label">Sign In</span>
+      </button>
     </form>
-    <div class="my-3 d-flex align-items-center gap-3 text-secondary small">
+    <div class="my-4 d-flex align-items-center gap-3 text-secondary small" aria-hidden="true">
       <span class="border-top border-secondary flex-grow-1"></span>
       <span>or</span>
       <span class="border-top border-secondary flex-grow-1"></span>
@@ -22,16 +41,31 @@
       type="button"
       data-session-url="{% url 'users:google_session' %}"
       aria-describedby="google-sign-in-message"
+      {% if not firebase_configured %}disabled{% endif %}
     >
       <span id="google-sign-in-label">Continue with Google</span>
     </button>
-    <p id="google-sign-in-message" class="small text-danger mt-3 mb-0" role="alert" aria-live="polite"></p>
-    <div class="mt-3 small text-secondary d-flex justify-content-between">
+    <button id="google-redirect-sign-in" class="btn btn-outline-light w-100 py-2 mt-2" type="button" hidden>
+      Continue with Google using full-page sign-in
+    </button>
+    <p id="google-sign-in-message" class="small text-danger mt-3 mb-0" role="alert" aria-live="polite">{% if not firebase_configured %}Google sign-in is not configured. Ask the site administrator to add the Firebase web settings.{% endif %}</p>
+    <nav class="auth-links mt-4 small" aria-label="Account options">
       <a href="{% url 'users:register' %}" class="text-danger text-decoration-none">Create Account</a>
       <a href="{% url 'users:password_reset' %}" class="text-secondary text-decoration-none">Forgot Password?</a>
-    </div>
-  </div>
+    </nav>
+  </section>
 </div>
 {{ firebase_web_config|json_script:"firebase-web-config" }}
 <script type="module" src="{% static 'js/firebase-auth.js' %}"></script>
+<script>
+  document.getElementById("login-form")?.addEventListener("submit", () => {
+    const button = document.getElementById("password-sign-in");
+    if (!button) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.querySelector(".spinner-border")?.removeAttribute("hidden");
+    const label = button.querySelector(".submit-label");
+    if (label) label.textContent = "Signing in…";
+  });
+</script>
 {% endblock %}

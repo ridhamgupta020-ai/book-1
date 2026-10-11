@@ -51,6 +51,40 @@ body.bg-cinema-canvas {
   padding-block: 1.75rem;
 }
 
+.auth-page {
+  max-width: 560px;
+}
+
+.auth-card {
+  width: 100%;
+  margin-inline: auto;
+  border-radius: 0.85rem;
+}
+
+.auth-card .form-control {
+  min-height: 46px;
+}
+
+.auth-card .btn {
+  min-height: 44px;
+}
+
+.auth-card :focus-visible {
+  outline: 3px solid rgba(225, 29, 72, 0.8);
+  outline-offset: 2px;
+}
+
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.auth-card [hidden] {
+  display: none !important;
+}
+
 main .container.py-5 {
   padding-block: 1.75rem !important;
 }

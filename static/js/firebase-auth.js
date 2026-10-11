@@ -12,16 +12,15 @@ import {
 const button = document.getElementById("google-sign-in");
 const message = document.getElementById("google-sign-in-message");
 const label = document.getElementById("google-sign-in-label");
+const redirectButton = document.getElementById("google-redirect-sign-in");
 const configNode = document.getElementById("firebase-web-config");
 
-if (button && message && label && configNode) {
+if (button && message && label && redirectButton && configNode) {
   const config = JSON.parse(configNode.textContent || "{}");
   const requiredConfig = [
     "apiKey",
     "authDomain",
     "projectId",
-    "storageBucket",
-    "messagingSenderId",
     "appId",
   ];
 
@@ -40,9 +39,14 @@ if (button && message && label && configNode) {
       case "auth/network-request-failed":
         return "Could not reach Firebase. Check your network connection and try again.";
       case "auth/popup-closed-by-user":
-        return "The Google sign-in window was closed before sign-in completed.";
+      case "auth/cancelled-popup-request":
+        return "Google sign-in was cancelled or the popup closed before completion. You can try again or continue with full-page sign-in.";
       case "auth/popup-blocked":
-        return "The sign-in popup was blocked. Switching to the redirect flow.";
+        return "The sign-in popup was blocked. Use full-page sign-in instead.";
+      case "auth/unauthorized-continue-uri":
+        return "This sign-in redirect is not authorized. Ask the site administrator to check the Firebase authorized domains.";
+      case "auth/account-exists-with-different-credential":
+        return "An account already exists with this email using a different sign-in method. Sign in with that method first.";
       default:
         return "Google sign-in could not be completed. Please try again.";
     }
@@ -50,8 +54,14 @@ if (button && message && label && configNode) {
 
   const setBusy = (busy) => {
     button.disabled = busy;
+    redirectButton.disabled = busy;
     label.textContent = busy ? "Connecting to Google…" : "Continue with Google";
     button.setAttribute("aria-busy", String(busy));
+    redirectButton.setAttribute("aria-busy", String(busy));
+  };
+
+  const showRedirectOption = (show) => {
+    redirectButton.hidden = !show;
   };
 
   const completeDjangoSession = async (user) => {
@@ -127,32 +137,48 @@ if (button && message && label && configNode) {
           }
           return undefined;
         })
-        .catch((error) => showMessage(errorMessage(error)));
+        .catch((error) => {
+          showMessage(errorMessage(error));
+          showRedirectOption(true);
+          setBusy(false);
+        });
 
       button.addEventListener("click", async () => {
         setBusy(true);
         showMessage("");
+        showRedirectOption(false);
         try {
           await setPersistence(auth, browserLocalPersistence);
           const result = await signInWithPopup(auth, provider);
           await completeDjangoSession(result.user);
         } catch (error) {
-          if (
+          showMessage(
+            error instanceof Error && !error.code
+              ? error.message
+              : errorMessage(error)
+          );
+          showRedirectOption(
             error?.code === "auth/popup-blocked" ||
-            error?.code === "auth/operation-not-supported-in-this-environment"
-          ) {
-            try {
-              await setPersistence(auth, browserLocalPersistence);
-              await signInWithRedirect(auth, provider);
-              return;
-            } catch (redirectError) {
-              showMessage(errorMessage(redirectError));
-            }
-          } else if (error instanceof Error && !error.code) {
-            showMessage(error.message);
-          } else {
-            showMessage(errorMessage(error));
-          }
+              error?.code === "auth/popup-closed-by-user" ||
+              error?.code === "auth/cancelled-popup-request" ||
+              error?.code === "auth/operation-not-supported-in-this-environment"
+          );
+          setBusy(false);
+        }
+      });
+
+      redirectButton.addEventListener("click", async () => {
+        setBusy(true);
+        showMessage("");
+        try {
+          await setPersistence(auth, browserLocalPersistence);
+          await signInWithRedirect(auth, provider);
+        } catch (error) {
+          showMessage(
+            error instanceof Error && !error.code
+              ? error.message
+              : errorMessage(error)
+          );
           setBusy(false);
         }
       });

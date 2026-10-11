@@ -5,6 +5,7 @@ WhiteNoise static asset serving, and Render / Vercel deployment.
 """
 
 import os
+import secrets
 from pathlib import Path
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -22,15 +23,11 @@ DEBUG = os.getenv("DEBUG", "False").strip().lower() in ("true", "1", "yes")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 if not SECRET_KEY or SECRET_KEY == "replace-with-a-generated-django-secret":
-    if not DEBUG and not (IS_RENDER or IS_VERCEL):
+    if not DEBUG:
         raise ImproperlyConfigured(
-            "CRITICAL: SECRET_KEY environment variable must be set to a strong secret in production."
+            "SECRET_KEY must be configured with a strong secret outside DEBUG mode."
         )
-    # Safe fallback if platform env var has not been entered in dashboard yet
-    SECRET_KEY = os.getenv(
-        "RENDER_SERVICE_ID",
-        os.getenv("VERCEL_PROJECT_ID", "django-insecure-mybookshow-fallback-key-change-in-env"),
-    ) + "-mybookshow-hmac-signing-key"
+    SECRET_KEY = secrets.token_urlsafe(50)
 
 raw_allowed_hosts = os.getenv(
     "ALLOWED_HOSTS",
@@ -70,17 +67,12 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "https://iqxcgzrfjplernbidkfd.supabase.
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
 
 FIREBASE_WEB_CONFIG = {
-    "apiKey": os.getenv("VITE_FIREBASE_API_KEY", "").strip()
-    or "AIzaSyDLfUwhO3N7Gqq0AlsZ4rOJ-fw74VQgc44",
-    "authDomain": os.getenv("VITE_FIREBASE_AUTH_DOMAIN", "").strip()
-    or "ridhm-60933.firebaseapp.com",
-    "projectId": os.getenv("VITE_FIREBASE_PROJECT_ID", "").strip() or "ridhm-60933",
-    "storageBucket": os.getenv("VITE_FIREBASE_STORAGE_BUCKET", "").strip()
-    or "ridhm-60933.firebasestorage.app",
-    "messagingSenderId": os.getenv("VITE_FIREBASE_MESSAGING_SENDER_ID", "").strip()
-    or "871946214792",
-    "appId": os.getenv("VITE_FIREBASE_APP_ID", "").strip()
-    or "1:871946214792:web:35bd50fbbcea9544b9ee3d",
+    "apiKey": os.getenv("VITE_FIREBASE_API_KEY", "").strip(),
+    "authDomain": os.getenv("VITE_FIREBASE_AUTH_DOMAIN", "").strip(),
+    "projectId": os.getenv("VITE_FIREBASE_PROJECT_ID", "").strip(),
+    "storageBucket": os.getenv("VITE_FIREBASE_STORAGE_BUCKET", "").strip(),
+    "messagingSenderId": os.getenv("VITE_FIREBASE_MESSAGING_SENDER_ID", "").strip(),
+    "appId": os.getenv("VITE_FIREBASE_APP_ID", "").strip(),
 }
 
 INSTALLED_APPS = [
@@ -201,6 +193,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB upload ceiling
 LOGIN_URL = "users:login"
 LOGIN_REDIRECT_URL = "movies:home"
 LOGOUT_REDIRECT_URL = "movies:home"
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", "3600"))
 
 # Production HTTPS & Cookie Security
 if not DEBUG:

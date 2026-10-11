@@ -20,7 +20,11 @@ from .firebase_auth import (
     InvalidFirebaseToken,
     verify_firebase_id_token,
 )
-from .forms import UserProfileUpdateForm, UserRegisterForm
+from .forms import (
+    MyBookShowAuthenticationForm,
+    UserProfileUpdateForm,
+    UserRegisterForm,
+)
 from .models import UserProfile
 
 
@@ -29,11 +33,21 @@ logger = logging.getLogger(__name__)
 
 class MyBookShowLoginView(LoginView):
     template_name = "users/login.html"
+    form_class = MyBookShowAuthenticationForm
     redirect_authenticated_user = True
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+        return response
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["firebase_web_config"] = settings.FIREBASE_WEB_CONFIG
+        context["firebase_configured"] = all(
+            settings.FIREBASE_WEB_CONFIG.get(key)
+            for key in ("apiKey", "authDomain", "projectId", "appId")
+        )
         return context
 
 
